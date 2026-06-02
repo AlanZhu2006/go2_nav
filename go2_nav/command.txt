@@ -150,6 +150,17 @@ GO2_LOG_INTERVAL_SEC=0.3 \
 GO2_MAX_VX=0.30 \
 GO2_MAX_VY=0.30 \
 GO2_MAX_WZ=0.70 \
+# Optional cmd_vel -> Go2 body mapping.
+# If Nav2's x/y command frame is rotated from the real Go2 body frame, test one:
+#   +90 deg CCW mapping: vx_go2=-vy_nav, vy_go2=+vx_nav
+#     GO2_SWAP_XY=true GO2_X_SIGN=-1.0 GO2_Y_SIGN=1.0
+#   -90 deg CW mapping:  vx_go2=+vy_nav, vy_go2=-vx_nav
+#     GO2_SWAP_XY=true GO2_X_SIGN=1.0 GO2_Y_SIGN=-1.0
+# Keep GO2_WZ_SIGN=1.0 if keyboard q/e turning direction is already correct.
+GO2_SWAP_XY=false \
+GO2_X_SIGN=1.0 \
+GO2_Y_SIGN=1.0 \
+GO2_WZ_SIGN=1.0 \
 NAV_BASE_FRAME=livox_frame \
 NAV_ODOM_TOPIC=/Odometry \
 ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
@@ -174,6 +185,21 @@ SCAN_MIN_HEIGHT=0.20 \
 SCAN_MAX_HEIGHT=1.80 \
 SCAN_TRANSFORM_TOLERANCE=0.50 \
 ./scripts/start_mid360_start_robot_style.sh
+
+# If Nav2 direction is rotated 90 deg, retry the full command above with this
+# mapping block replacing the neutral one:
+#
+# +90 deg CCW:
+# GO2_SWAP_XY=true \
+# GO2_X_SIGN=-1.0 \
+# GO2_Y_SIGN=1.0 \
+# GO2_WZ_SIGN=1.0 \
+#
+# -90 deg CW:
+# GO2_SWAP_XY=true \
+# GO2_X_SIGN=1.0 \
+# GO2_Y_SIGN=-1.0 \
+# GO2_WZ_SIGN=1.0 \
 
 # Watch actual commands sent to SportClient.Move().
 tail -f /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log

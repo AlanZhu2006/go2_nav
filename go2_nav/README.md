@@ -401,6 +401,34 @@ GO2_MAX_WZ=0.70
 
 我们用键盘测试过，`vx=0.30, vy=0.30, wz=0.70` 对当前 Go2 响应比较合理。更小的速度会出现需要长按很久、姿态轻微变化但不明显移动的问题。
 
+如果键盘脚本方向正确，但 Nav2 自动导航方向像整体偏了 90 度，可以先不改定位和地图，直接在 Go2 command bridge 里测试二维速度映射：
+
+```text
+中性映射:
+  vx_go2 = vx_nav
+  vy_go2 = vy_nav
+
++90 度逆时针映射:
+  vx_go2 = -vy_nav
+  vy_go2 =  vx_nav
+  GO2_SWAP_XY=true
+  GO2_X_SIGN=-1.0
+  GO2_Y_SIGN=1.0
+
+-90 度顺时针映射:
+  vx_go2 =  vy_nav
+  vy_go2 = -vx_nav
+  GO2_SWAP_XY=true
+  GO2_X_SIGN=1.0
+  GO2_Y_SIGN=-1.0
+```
+
+如果键盘 `q/e` 的旋转方向已经正确，先保持：
+
+```text
+GO2_WZ_SIGN=1.0
+```
+
 遥控器优先很重要：
 
 ```text
