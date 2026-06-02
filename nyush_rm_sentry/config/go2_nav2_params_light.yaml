@@ -113,9 +113,9 @@ controller_server:
       max_vel_x: 0.30
       max_vel_y: 0.30
       max_vel_theta: 0.70
-      min_speed_xy: 0.0
+      min_speed_xy: 0.08
       max_speed_xy: 0.42
-      min_speed_theta: 0.0
+      min_speed_theta: 0.12
       acc_lim_x: 0.60
       acc_lim_y: 0.45
       acc_lim_theta: 1.2
@@ -135,14 +135,14 @@ controller_server:
       stateful: true
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.02
-      PathAlign.scale: 8.0
+      PathAlign.scale: 5.0
       PathAlign.forward_point_distance: 0.1
-      GoalAlign.scale: 4.0
+      GoalAlign.scale: 2.0
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 20.0
       GoalDist.scale: 14.0
-      RotateToGoal.scale: 4.0
-      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.scale: 1.5
+      RotateToGoal.slowing_factor: 3.0
       RotateToGoal.lookahead_time: -1.0
 
 controller_server_rclcpp_node:

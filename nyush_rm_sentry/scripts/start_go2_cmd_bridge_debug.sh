@@ -22,6 +22,8 @@ GO2_WZ_SIGN="${GO2_WZ_SIGN:-1.0}"
 GO2_SWAP_XY="${GO2_SWAP_XY:-false}"
 GO2_DEADBAND_V="${GO2_DEADBAND_V:-0.01}"
 GO2_DEADBAND_W="${GO2_DEADBAND_W:-0.02}"
+GO2_MIN_CMD_V="${GO2_MIN_CMD_V:-0.0}"
+GO2_MIN_CMD_W="${GO2_MIN_CMD_W:-0.0}"
 GO2_SEND_ZERO_WHEN_IDLE="${GO2_SEND_ZERO_WHEN_IDLE:-false}"
 GO2_REMOTE_PRIORITY="${GO2_REMOTE_PRIORITY:-false}"
 GO2_LOG_COMMANDS="${GO2_LOG_COMMANDS:-true}"
@@ -61,6 +63,7 @@ echo "    rmw:       $RMW_IMPLEMENTATION"
 echo "    limits:    vx=$GO2_MAX_VX vy=$GO2_MAX_VY wz=$GO2_MAX_WZ"
 echo "    mapping:   swap_xy=$GO2_SWAP_XY signs=($GO2_X_SIGN,$GO2_Y_SIGN,$GO2_WZ_SIGN)"
 echo "    deadband:  v=$GO2_DEADBAND_V w=$GO2_DEADBAND_W"
+echo "    floor:     v=$GO2_MIN_CMD_V w=$GO2_MIN_CMD_W"
 echo "    log:       $LOG_FILE"
 
 CYCLONEDDS_HOME="$GO2_CYCLONEDDS_HOME" \
@@ -78,6 +81,8 @@ python3 "$SCRIPT_DIR/go2_cmd_bridge.py" --net-if "$UNITREE_NET_IF" --ros-args \
     -p swap_xy:="$GO2_SWAP_XY" \
     -p deadband_v:="$GO2_DEADBAND_V" \
     -p deadband_w:="$GO2_DEADBAND_W" \
+    -p min_cmd_v:="$GO2_MIN_CMD_V" \
+    -p min_cmd_w:="$GO2_MIN_CMD_W" \
     -p enabled:=true \
     -p send_zero_when_idle:="$GO2_SEND_ZERO_WHEN_IDLE" \
     -p remote_priority:="$GO2_REMOTE_PRIORITY" \

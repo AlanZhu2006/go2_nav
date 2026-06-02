@@ -138,6 +138,10 @@ GO2_X_SIGN="${GO2_X_SIGN:-1.0}"
 GO2_Y_SIGN="${GO2_Y_SIGN:-1.0}"
 GO2_WZ_SIGN="${GO2_WZ_SIGN:-1.0}"
 GO2_SWAP_XY="${GO2_SWAP_XY:-false}"
+GO2_DEADBAND_V="${GO2_DEADBAND_V:-0.02}"
+GO2_DEADBAND_W="${GO2_DEADBAND_W:-0.04}"
+GO2_MIN_CMD_V="${GO2_MIN_CMD_V:-0.0}"
+GO2_MIN_CMD_W="${GO2_MIN_CMD_W:-0.0}"
 GO2_CMD_BRIDGE_ENABLED="${GO2_CMD_BRIDGE_ENABLED:-true}"
 GO2_SEND_ZERO_WHEN_IDLE="${GO2_SEND_ZERO_WHEN_IDLE:-false}"
 GO2_REMOTE_PRIORITY="${GO2_REMOTE_PRIORITY:-true}"
@@ -1149,6 +1153,10 @@ if [ "$START_GO2_CMD_BRIDGE" = "true" ] || [ "$START_GO2_CMD_BRIDGE" = "1" ]; th
         -p y_sign:="$GO2_Y_SIGN" \
         -p wz_sign:="$GO2_WZ_SIGN" \
         -p swap_xy:="$GO2_SWAP_XY" \
+        -p deadband_v:="$GO2_DEADBAND_V" \
+        -p deadband_w:="$GO2_DEADBAND_W" \
+        -p min_cmd_v:="$GO2_MIN_CMD_V" \
+        -p min_cmd_w:="$GO2_MIN_CMD_W" \
         -p enabled:="$GO2_CMD_BRIDGE_ENABLED" \
         -p send_zero_when_idle:="$GO2_SEND_ZERO_WHEN_IDLE" \
         -p remote_priority:="$GO2_REMOTE_PRIORITY" \
@@ -1209,6 +1217,7 @@ Topics:
   cmd_vel:      $GO2_CMD_TOPIC
   Go2 bridge:   max=($GO2_MAX_VX, $GO2_MAX_VY, $GO2_MAX_WZ)
                 mapping swap_xy=$GO2_SWAP_XY signs=($GO2_X_SIGN, $GO2_Y_SIGN, $GO2_WZ_SIGN)
+                deadband=($GO2_DEADBAND_V, $GO2_DEADBAND_W) floor=($GO2_MIN_CMD_V, $GO2_MIN_CMD_W)
 
 Localization:
   initial_pose:             $PUBLISH_INITIAL_POSE ($INITIAL_POSE_X, $INITIAL_POSE_Y, $INITIAL_POSE_YAW)

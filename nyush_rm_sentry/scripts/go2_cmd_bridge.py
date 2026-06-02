@@ -47,6 +47,8 @@ class Go2CmdBridge(Node):
         self.declare_parameter("swap_xy", False)
         self.declare_parameter("deadband_v", 0.02)
         self.declare_parameter("deadband_w", 0.04)
+        self.declare_parameter("min_cmd_v", 0.0)
+        self.declare_parameter("min_cmd_w", 0.0)
         self.declare_parameter("enabled", True)
         self.declare_parameter("send_zero_when_idle", False)
         self.declare_parameter("stop_once_on_release", True)
@@ -69,6 +71,8 @@ class Go2CmdBridge(Node):
         self.swap_xy = bool(self.get_parameter("swap_xy").value)
         self.deadband_v = float(self.get_parameter("deadband_v").value)
         self.deadband_w = float(self.get_parameter("deadband_w").value)
+        self.min_cmd_v = abs(float(self.get_parameter("min_cmd_v").value))
+        self.min_cmd_w = abs(float(self.get_parameter("min_cmd_w").value))
         self.enabled = bool(self.get_parameter("enabled").value)
         self.send_zero_when_idle = bool(self.get_parameter("send_zero_when_idle").value)
         self.stop_once_on_release = bool(self.get_parameter("stop_once_on_release").value)
@@ -96,6 +100,8 @@ class Go2CmdBridge(Node):
             "Go2 cmd bridge started: "
             f"{self.cmd_vel_topic} -> SportClient.Move(), "
             f"limits vx={self.max_vx:.2f}, vy={self.max_vy:.2f}, wz={self.max_wz:.2f}, "
+            f"deadband v={self.deadband_v:.2f}, w={self.deadband_w:.2f}, "
+            f"floor v={self.min_cmd_v:.2f}, w={self.min_cmd_w:.2f}, "
             f"enabled={self.enabled}, "
             f"send_zero_when_idle={self.send_zero_when_idle}, "
             f"remote_priority={self.remote_priority}"
@@ -162,11 +168,22 @@ class Go2CmdBridge(Node):
             vy = 0.0
         if abs(wz) < self.deadband_w:
             wz = 0.0
+        vx = self.apply_floor(vx, self.min_cmd_v)
+        vy = self.apply_floor(vy, self.min_cmd_v)
+        wz = self.apply_floor(wz, self.min_cmd_w)
         return vx, vy, wz
 
     @staticmethod
     def is_zero_command(vx: float, vy: float, wz: float) -> bool:
         return vx == 0.0 and vy == 0.0 and wz == 0.0
+
+    @staticmethod
+    def apply_floor(value: float, floor: float) -> float:
+        if value == 0.0 or floor <= 0.0:
+            return value
+        if abs(value) >= floor:
+            return value
+        return floor if value > 0.0 else -floor
 
     def release_control(self, reason: str) -> None:
         if not self.command_active and not self.send_zero_when_idle:

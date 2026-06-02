@@ -401,6 +401,24 @@ GO2_MAX_WZ=0.70
 
 我们用键盘测试过，`vx=0.30, vy=0.30, wz=0.70` 对当前 Go2 响应比较合理。更小的速度会出现需要长按很久、姿态轻微变化但不明显移动的问题。
 
+Go2 和轮式底盘不太一样。轮式底盘收到很小的 `/cmd_vel` 往往也会缓慢动起来，但 Go2 的 high-level 步态控制存在明显的实际起步死区：速度太小的时候可能只是身体晃动、原地犹豫，不会立刻迈步。因此当前 bridge 支持最小有效命令：
+
+```text
+GO2_DEADBAND_V=0.02
+GO2_DEADBAND_W=0.04
+GO2_MIN_CMD_V=0.10
+GO2_MIN_CMD_W=0.20
+```
+
+含义是：
+
+```text
+小于 deadband 的命令直接视为 0
+大于 deadband 但小于 min_cmd 的非零命令，会抬到 min_cmd
+```
+
+这样可以减少 Nav2 输出很小速度时 Go2 只晃不走的问题。与此同时，`go2_nav2_params_light.yaml` 里也把 DWB 的 `min_speed_xy/min_speed_theta` 设成非零，并降低了 `RotateToGoal` 权重，避免每次开始走之前先原地转很久。
+
 如果键盘脚本方向正确，但 Nav2 自动导航方向像整体偏了 90 度，可以先不改定位和地图，直接在 Go2 command bridge 里测试二维速度映射：
 
 ```text

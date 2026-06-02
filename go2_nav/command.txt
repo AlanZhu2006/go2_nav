@@ -150,13 +150,10 @@ GO2_LOG_INTERVAL_SEC=0.3 \
 GO2_MAX_VX=0.30 \
 GO2_MAX_VY=0.30 \
 GO2_MAX_WZ=0.70 \
-# Optional cmd_vel -> Go2 body mapping.
-# If Nav2's x/y command frame is rotated from the real Go2 body frame, test one:
-#   +90 deg CCW mapping: vx_go2=-vy_nav, vy_go2=+vx_nav
-#     GO2_SWAP_XY=true GO2_X_SIGN=-1.0 GO2_Y_SIGN=1.0
-#   -90 deg CW mapping:  vx_go2=+vy_nav, vy_go2=-vx_nav
-#     GO2_SWAP_XY=true GO2_X_SIGN=1.0 GO2_Y_SIGN=-1.0
-# Keep GO2_WZ_SIGN=1.0 if keyboard q/e turning direction is already correct.
+GO2_DEADBAND_V=0.02 \
+GO2_DEADBAND_W=0.04 \
+GO2_MIN_CMD_V=0.10 \
+GO2_MIN_CMD_W=0.20 \
 GO2_SWAP_XY=false \
 GO2_X_SIGN=1.0 \
 GO2_Y_SIGN=1.0 \
