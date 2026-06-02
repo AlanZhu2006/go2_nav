@@ -206,6 +206,18 @@ unset CYCLONEDDS_URI
 # In another shell:
 tail -f /tmp/go2_cmd_bridge_debug.log
 
+# Direction probe:
+# This publishes +x/-x/+y/-y/+wz/-wz to /cmd_vel and prints /Odometry deltas.
+# Use it to verify whether Go2 command direction and FAST-LIO odom direction agree.
+./scripts/test_cmd_vel_direction.py \
+  --cmd-topic /cmd_vel \
+  --odom-topic /Odometry \
+  --vx 0.20 \
+  --vy 0.20 \
+  --wz 0.40 \
+  --duration 1.5 \
+  --interactive
+
 
 ###############################################################################
 # 7. Runtime diagnostics
