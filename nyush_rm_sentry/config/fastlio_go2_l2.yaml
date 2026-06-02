@@ -1,0 +1,54 @@
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 1
+        max_iteration: 3
+        filter_size_surf: 0.35
+        filter_size_map: 0.35
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "/home/unitree/maps/fastlio_mapping_latest/fastlio_map.pcd"
+
+        common:
+            lid_topic: "/utlidar/cloud"
+            imu_topic: "/utlidar/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            # Unitree L2 PointCloud2 has x/y/z/intensity/time/ring fields.
+            # Use FAST-LIO's VELO16-style handler so per-point time and ring
+            # are preserved for motion compensation.
+            lidar_type: 2
+            scan_line: 18
+            blind: 0.5
+            timestamp_unit: 0
+            scan_rate: 10
+
+        mapping:
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 50.0
+            # Do not estimate LiDAR-IMU extrinsics online on the Go2. If this
+            # is enabled with a weak initial guess, the odometry can drift or
+            # jump badly as soon as the robot moves.
+            extrinsic_est_en: false
+            extrinsic_T: [0.007698, 0.014655, -0.00667]
+            extrinsic_R: [1.0, 0.0, 0.0,
+                          0.0, 1.0, 0.0,
+                          0.0, 0.0, 1.0]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: true
+
+        pcd_save:
+            pcd_save_en: true
+            interval: -1

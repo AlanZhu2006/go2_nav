@@ -1,0 +1,4 @@
+[INFO] [1779454301.704527256] [pcd2pgm]: Initial point cloud size: 152413
+[INFO] [1779454301.708569339] [pcd2pgm]: After PassThrough filtering: 36633 points
+[INFO] [1779454301.790058639] [pcd2pgm]: After RadiusOutlier filtering: 34805 points
+[INFO] [1779454301.790733034] [pcd2pgm]: Map data size: 92415

@@ -1,0 +1,21 @@
+[Unit]
+Description=x11vnc desktop for RViz on Go2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/work/nyush_rm_sentry
+Environment=DISPLAY_NUM=1
+Environment=VNC_PORT=5901
+Environment=GEOMETRY=1920x1080
+Environment=DEPTH=24
+Environment=LOCALHOST_ONLY=0
+Environment=PASSWORD_FILE=%h/.vnc/passwd
+ExecStart=%h/work/nyush_rm_sentry/scripts/start_x11vnc_rviz.sh
+ExecStop=%h/work/nyush_rm_sentry/scripts/stop_x11vnc_rviz.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

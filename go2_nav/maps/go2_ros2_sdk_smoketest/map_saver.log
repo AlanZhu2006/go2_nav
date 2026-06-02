@@ -1,0 +1,13 @@
+[INFO] [1779858466.416357361] [map_saver]: 
+	map_saver lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1779858466.416768873] [map_saver]: Creating
+[INFO] [1779858466.417656668] [map_saver]: Configuring
+[INFO] [1779858466.430456603] [map_saver]: Saving map from '/map' topic to '/maps/go2_ros2_sdk_smoketest/map' file
+[INFO] [1779858466.459544995] [map_io]: Received a 121 X 88 map @ 0.05 m/pix
+[INFO] [1779858466.488043848] [map_io]: Writing map occupancy data to /maps/go2_ros2_sdk_smoketest/map.pgm
+[INFO] [1779858466.489409111] [map_io]: Writing map metadata to /maps/go2_ros2_sdk_smoketest/map.yaml
+[INFO] [1779858466.489746410] [map_io]: Map saved
+[INFO] [1779858466.489780748] [map_saver]: Map saved successfully
+[INFO] [1779858466.494271438] [map_saver]: Destroying

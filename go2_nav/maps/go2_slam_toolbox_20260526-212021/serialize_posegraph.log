@@ -1,0 +1,5 @@
+requester: making request: slam_toolbox.srv.SerializePoseGraph_Request(filename='/home/unitree/work/go2_nav/maps/go2_slam_toolbox_20260526-212021/posegraph')
+
+response:
+slam_toolbox.srv.SerializePoseGraph_Response()
+

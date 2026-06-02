@@ -1,0 +1,14 @@
+[INFO] [1779801754.789868687] [map_saver]: 
+	map_saver lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1779801754.790212576] [map_saver]: Creating
+[INFO] [1779801754.790514990] [map_saver]: Saving map from '/map' topic to '/home/unitree/work/go2_nav/maps/go2_slam_toolbox_20260526-212021/map' file
+[WARN] [1779801754.790577521] [map_saver]: Free threshold unspecified. Setting it to default value: 0.250000
+[WARN] [1779801754.790623348] [map_saver]: Occupied threshold unspecified. Setting it to default value: 0.650000
+[INFO] [map_io]: Received a 64 X 129 map @ 0.05 m/pix
+[INFO] [map_io]: Writing map occupancy data to /home/unitree/work/go2_nav/maps/go2_slam_toolbox_20260526-212021/map.pgm
+[INFO] [map_io]: Writing map metadata to /home/unitree/work/go2_nav/maps/go2_slam_toolbox_20260526-212021/map.yaml
+[INFO] [map_io]: Map saved
+[INFO] [1779801756.712719047] [map_saver]: Map saved successfully
+[INFO] [1779801756.713031126] [map_saver]: Destroying

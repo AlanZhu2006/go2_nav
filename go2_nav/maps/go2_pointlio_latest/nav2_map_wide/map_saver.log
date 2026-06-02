@@ -1,0 +1,14 @@
+[INFO] [1779783876.841812902] [map_saver]: 
+	map_saver lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1779783876.842134613] [map_saver]: Creating
+[INFO] [1779783876.842517831] [map_saver]: Saving map from '/map' topic to '/home/unitree/work/go2_nav/maps/go2_pointlio_latest/nav2_map_wide/map' file
+[WARN] [1779783876.842615499] [map_saver]: Free threshold unspecified. Setting it to default value: 0.250000
+[WARN] [1779783876.842660141] [map_saver]: Occupied threshold unspecified. Setting it to default value: 0.650000
+[INFO] [map_io]: Received a 80 X 72 map @ 0.05 m/pix
+[INFO] [map_io]: Writing map occupancy data to /home/unitree/work/go2_nav/maps/go2_pointlio_latest/nav2_map_wide/map.pgm
+[INFO] [map_io]: Writing map metadata to /home/unitree/work/go2_nav/maps/go2_pointlio_latest/nav2_map_wide/map.yaml
+[INFO] [map_io]: Map saved
+[INFO] [1779783876.955812154] [map_saver]: Map saved successfully
+[INFO] [1779783876.956048197] [map_saver]: Destroying

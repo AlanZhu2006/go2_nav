@@ -1,0 +1,10 @@
+[INFO] [1779454307.893332798] [map_saver]: 
+	map_saver lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1779454307.893664683] [map_saver]: Creating
+[INFO] [1779454307.893988856] [map_saver]: Saving map from '/map' topic to '/home/unitree/work/go2_nav/maps/go2_builtin_latest/nav2_map_accumulated_z045/map' file
+[WARN] [1779454307.894031674] [map_saver]: Free threshold unspecified. Setting it to default value: 0.250000
+[WARN] [1779454307.894060635] [map_saver]: Occupied threshold unspecified. Setting it to default value: 0.650000
+[ERROR] [1779454309.900204301] [map_saver]: Failed to save the map: timeout
+[INFO] [1779454309.900405781] [map_saver]: Destroying

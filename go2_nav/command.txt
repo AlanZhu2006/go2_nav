@@ -1,0 +1,719 @@
+cd ~/work/nyush_rm_sentry
+./scripts/start_go2_builtin_rviz.sh
+
+# VNC Viewer:
+# 10.209.69.61:5901
+
+# Check built-in lidar / official odom topics:
+source ~/work/nyush_rm_sentry/scripts/go2_dds_env.sh
+ros2 topic list -t | grep -E 'utlidar|uslam|lio_sam'
+ros2 topic hz /utlidar/cloud_base
+ros2 topic hz /utlidar/cloud_deskewed
+ros2 topic hz /utlidar/robot_odom
+ros2 topic hz /uslam/cloud_map
+
+# If RViz says "No tf data", check this:
+timeout 4 ros2 topic echo /tf
+tail -f /tmp/go2_builtin_rviz/odom_to_tf.log
+
+# Save current official uslam map as PCD.
+# This only succeeds after /uslam/cloud_map actually publishes a map.
+cd ~/work/nyush_rm_sentry
+GO2_MAP_TOPIC=/uslam/cloud_map GO2_SAVE_TIMEOUT=120 ./scripts/save_go2_builtin_pcd.sh
+
+# Test only: save one live base-frame lidar cloud, not a global map.
+GO2_MAP_TOPIC=/utlidar/cloud_base GO2_MAP_OUTPUT=/tmp/go2_cloud_base_test.pcd GO2_SAVE_TIMEOUT=10 ./scripts/save_go2_builtin_pcd.sh
+
+# After reboot, Go2 built-in lidar services may be discovered but not publish data.
+# Start the robot-side lidar services first:
+cd ~/work/nyush_rm_sentry
+./scripts/start_go2_lidar_services.py
+./scripts/go2_utlidar_switch.py ON --repeat 5 --interval 0.2
+
+# Interactive accumulated mapping from Go2 built-in deskewed cloud:
+# The script starts Go2 lidar services, switches lidar ON, opens RViz by default,
+# keeps accumulating /utlidar/cloud_deskewed, then saves when you type:
+#   1 + Enter
+cd ~/work/nyush_rm_sentry
+./scripts/start_go2_accumulated_mapping.sh
+
+# Output:
+# ~/work/go2_nav/maps/go2_builtin_latest/accumulated_cloud_deskewed_<timestamp>.pcd
+# ~/work/go2_nav/maps/go2_builtin_latest/accumulated_latest.pcd
+
+# Same, but also convert the saved accumulated PCD into Nav2 map.pgm/map.yaml:
+cd ~/work/nyush_rm_sentry
+CONVERT_TO_PGM=true ./scripts/start_go2_accumulated_mapping.sh
+
+# Optional tuning:
+GO2_ACCUM_TOPIC=/utlidar/cloud_deskewed \
+GO2_ACCUM_VOXEL_SIZE=0.05 \
+GO2_ACCUM_MAP_DIR=~/work/go2_nav/maps/go2_builtin_latest \
+START_RVIZ=true \
+CONVERT_TO_PGM=true \
+./scripts/start_go2_accumulated_mapping.sh
+
+# Old single-frame test only, not a real map:
+GO2_MAP_TOPIC=/utlidar/cloud_base \
+GO2_MAP_OUTPUT=~/work/go2_nav/maps/go2_builtin_latest/cloud_base_after_service_switch.pcd \
+GO2_SAVE_TIMEOUT=15 \
+./scripts/save_go2_builtin_pcd.sh
+
+GO2_MAP_TOPIC=/utlidar/cloud_deskewed \
+GO2_MAP_OUTPUT=~/work/go2_nav/maps/go2_builtin_latest/cloud_deskewed_latest.pcd \
+GO2_SAVE_TIMEOUT=20 \
+./scripts/save_go2_builtin_pcd.sh
+
+# Convert the saved PCD into a Nav2 2D map using LihanChen2004/pcd2pgm.
+# This is an offline conversion, so the script isolates ROS to localhost/domain 88
+# to avoid mixing with Go2's live DDS traffic.
+cd ~/work/nyush_rm_sentry
+./scripts/pcd2pgm_go2.sh
+
+# Output:
+# ~/work/go2_nav/maps/go2_builtin_latest/nav2_map/map.pgm
+# ~/work/go2_nav/maps/go2_builtin_latest/nav2_map/map.yaml
+
+# Optional: convert another PCD or tune the height/radius filtering.
+PCD_INPUT=~/work/go2_nav/maps/go2_builtin_latest/cloud_deskewed_latest.pcd \
+MAP_OUT_DIR=~/work/go2_nav/maps/go2_builtin_latest/nav2_map \
+MAP_NAME=map \
+MAP_RESOLUTION=0.05 \
+PCD2PGM_Z_MIN=0.60 \
+PCD2PGM_Z_MAX=1.80 \
+PCD2PGM_RADIUS=0.15 \
+PCD2PGM_POINT_COUNT=5 \
+./scripts/pcd2pgm_go2.sh
+
+# Official Unitree built-in mapping path found on this Go2:
+# /utlidar/mapping_cmd is status/output, not the start command.
+# /utlidar/client_cmd has a subscriber, but command strings are unknown.
+# The safe known entry is Unitree's own graph_pid_ws mapping shell.
+cd ~/work/nyush_rm_sentry
+./scripts/start_unitree_lio_sam_mapping.sh
+
+# Preferred official LIO-SAM full-map workflow:
+# Starts Unitree official LIO-SAM mapping, opens Unitree build_map RViz,
+# starts /utlidar/cloud -> /rslidar_points and /utlidar/imu -> /dog_imu_raw bridge,
+# then waits for:
+#   1 + Enter = call /lio_sam_ros2/save_map, save global PCD, convert to Nav2 map
+#   s + Enter = show mapping topic/service status
+#   q + Enter = quit
+cd ~/work/nyush_rm_sentry
+GO2_OFFICIAL_MAP_SOURCE=lio_sam \
+CONVERT_TO_PGM=true \
+STOP_LIO_SAM_ON_EXIT=false \
+./scripts/start_go2_official_map.sh
+
+# Output:
+# ~/work/go2_nav/maps/go2_lio_sam_<timestamp>/*.pcd
+# ~/work/go2_nav/maps/go2_lio_sam_<timestamp>/nav2_map/map.pgm
+# ~/work/go2_nav/maps/go2_lio_sam_<timestamp>/nav2_map/map.yaml
+# ~/work/go2_nav/maps/go2_lio_sam_latest.pcd
+
+# If RViz says "Fixed Frame [map] does not exist", LIO-SAM has not published map TF yet.
+# Check the real cause:
+tail -80 /tmp/unitree_lio_sam_mapping/mapping_qt_test.log
+tail -80 /tmp/unitree_lio_sam_mapping/go2_lio_sam_topic_bridge.log
+
+# Check official LIO-SAM mapping outputs:
+source /opt/ros/foxy/setup.bash
+source /unitree/module/graph_pid_ws/install/setup.bash
+ros2 topic list -t | grep -E 'lio_sam_ros2|dog_imu|rslidar|utlidar'
+ros2 topic hz /lio_sam_ros2/mapping/odometry
+ros2 topic hz /lio_sam_ros2/mapping/map_local
+ros2 service list | grep /lio_sam_ros2/save_map
+
+# Save official LIO-SAM PCD map:
+cd ~/work/nyush_rm_sentry
+./scripts/save_unitree_lio_sam_map.sh ~/work/go2_nav/maps/go2_lio_sam_latest
+
+# Stop official mapping:
+cd ~/work/nyush_rm_sentry
+./scripts/stop_unitree_lio_sam_mapping.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/start_go2_accumulated_mapping.sh
+
+cd ~/work/nyush_rm_sentry
+
+PCD_INPUT=~/work/go2_nav/maps/go2_builtin_latest/accumulated_latest.pcd \
+MAP_OUT_DIR=~/work/go2_nav/maps/go2_builtin_latest/nav2_map_accumulated \
+MAP_NAME=map \
+./scripts/pcd2pgm_go2.sh
+
+# 5b. 如果想保存后自动转成 Nav2 map.pgm/map.yaml，用这个：
+CONVERT_TO_PGM=true ./scripts/start_go2_accumulated_mapping.sh
+
+# Point-LIO route for Go2 built-in lidar:
+# It starts Go2 lidar services, switches lidar ON, runs Point-LIO on
+# /utlidar/cloud + /utlidar/imu, opens RViz in VNC, and waits for:
+#   1 + Enter = stop Point-LIO and save the accumulated global PCD
+#   s + Enter = show status
+#   q + Enter = quit without saving
+cd ~/work/nyush_rm_sentry
+./scripts/start_go2_pointlio_mapping.sh
+
+# Same, but convert saved PCD to Nav2 map.pgm/map.yaml after you press 1:
+cd ~/work/nyush_rm_sentry
+CONVERT_TO_PGM=true ./scripts/start_go2_pointlio_mapping.sh
+
+# Official Go2 odom route:
+# Uses Unitree official /utlidar/cloud_base + /utlidar/robot_odom.
+# This avoids Point-LIO raw IMU/lidar initialization and uses Go2's built-in
+# lidar/base/odom processing chain.
+cd ~/work/nyush_rm_sentry
+CONVERT_TO_PGM=true ./scripts/start_go2_official_odom_mapping.sh
+
+# Output:
+# ~/work/go2_nav/maps/go2_official_odom_latest/official_odom_latest.pcd
+# ~/work/go2_nav/maps/go2_official_odom_latest/nav2_map/map.pgm
+# ~/work/go2_nav/maps/go2_official_odom_latest/nav2_map/map.yaml
+
+# If the generated PGM is sparse, use the Point-LIO-friendly conversion range:
+cd ~/work/nyush_rm_sentry
+PCD_INPUT=~/work/go2_nav/maps/go2_pointlio_latest/pointlio_latest.pcd \
+MAP_OUT_DIR=~/work/go2_nav/maps/go2_pointlio_latest/nav2_map_wide \
+MAP_NAME=map \
+PCD2PGM_Z_MIN=-0.5 \
+PCD2PGM_Z_MAX=1.2 \
+PCD2PGM_RADIUS=0.10 \
+PCD2PGM_POINT_COUNT=2 \
+./scripts/pcd2pgm_go2.sh
+
+# Output:
+# ~/work/go2_nav/maps/go2_pointlio_latest/pointlio_map_<timestamp>.pcd
+# ~/work/go2_nav/maps/go2_pointlio_latest/pointlio_latest.pcd
+# ~/work/go2_nav/maps/go2_pointlio_latest/nav2_map/map.pgm
+# ~/work/go2_nav/maps/go2_pointlio_latest/nav2_map/map.yaml
+
+# Convert Point-LIO PCD to Nav2 map.pgm/map.yaml:
+cd ~/work/nyush_rm_sentry
+PCD_INPUT=~/work/go2_nav/maps/go2_pointlio_latest/pointlio_latest.pcd \
+MAP_OUT_DIR=~/work/go2_nav/maps/go2_pointlio_latest/nav2_map \
+MAP_NAME=map \
+./scripts/pcd2pgm_go2.sh
+
+cd ~/work/nyush_rm_sentry
+CONVERT_TO_PGM=true ./scripts/start_go2_pointlio_mapping.sh
+
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true START_GO2_CMD_BRIDGE=false ./scripts/start_go2_nav2_with_rviz.sh
+
+# CURRENT TEST ROUTE: go2_ros2_sdk Humble Docker mapping
+cd ~/work/nyush_rm_sentry
+START_RVIZ=false ./scripts/start_go2_ros2_sdk_mapping.sh
+./scripts/status_go2_ros2_sdk_mapping.sh
+./scripts/save_go2_ros2_sdk_map.sh
+
+# abizovnuralem/go2_ros2_sdk minimal Docker reproduction route:
+# This uses ROS2 Humble in Docker, WebRTC to Go2 at 192.168.123.161,
+# SDK decoded /point_cloud2, lidar_processor_cpp aggregation,
+# pointcloud_to_laserscan, and slam_toolbox.
+cd ~/work/nyush_rm_sentry
+./scripts/build_go2_ros2_sdk_minimal.sh
+
+cd ~/work/nyush_rm_sentry
+START_RVIZ=false ./scripts/start_go2_ros2_sdk_mapping.sh
+
+# Check /point_cloud2, /pointcloud/filtered, /scan, /map, and odom->base_link TF.
+cd ~/work/nyush_rm_sentry
+./scripts/status_go2_ros2_sdk_mapping.sh
+
+# Save the current slam_toolbox /map into:
+#   ~/work/go2_nav/maps/go2_ros2_sdk_<timestamp>/map.yaml
+#   ~/work/go2_nav/maps/go2_ros2_sdk_latest/map.yaml
+cd ~/work/nyush_rm_sentry
+./scripts/save_go2_ros2_sdk_map.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_go2_ros2_sdk_mapping.sh
+
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true START_GO2_CMD_BRIDGE=false ./scripts/start_go2_slam_toolbox_mapping.sh
+
+# Nav2 localization must use the same pointcloud_to_laserscan geometry as mapping:
+#   /utlidar/cloud_base -> /scan, base_link,
+#   min_height=-0.20 max_height=2.00 range_min=0.10 range_max=8.0.
+# If scan and map do not overlap in RViz, restart Nav2 after checking these params.
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true START_GO2_CMD_BRIDGE=false ./scripts/start_go2_nav2_with_rviz.sh
+
+cd ~/work/nyush_rm_sentry
+
+# 启动官方 go2_ros2_sdk 建图链路
+START_RVIZ=true ./scripts/start_go2_ros2_sdk_mapping.sh
+
+# MID360 + FAST-LIO2 建图主线
+# 硬件连接:
+#   MID360 -> Go2 原生 eth0
+# 网络:
+#   eth0 = 192.168.123.18/24 + 192.168.1.2/24
+#   MID360 = 192.168.1.3
+#   eth1/USB 拓展坞网卡不要用于 MID360
+cd ~/work/nyush_rm_sentry
+ip -br addr show eth0
+ip route get 192.168.1.3
+arping -I eth0 -c 5 192.168.1.3
+
+# 启动 Livox driver + FAST-LIO2 + RViz
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true ./scripts/start_mid360_fastlio_mapping.sh
+
+# 建图过程中检查
+source /opt/ros/foxy/setup.bash
+source ~/nav_ws/install/setup.bash
+ros2 topic hz /livox/lidar
+ros2 topic hz /livox/imu
+ros2 topic hz /cloud_registered
+tail -f /tmp/mid360_fastlio_mapping/fastlio_mapping.log
+
+# 地图满意后保存 PCD
+cd ~/work/nyush_rm_sentry
+./scripts/save_mid360_fastlio_map.sh
+
+# 把 MID360 FAST-LIO 的 PCD 转成 Nav2 可用的 PGM/YAML
+# 输出:
+#   ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.pgm
+#   ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
+
+pkill -f "[f]astlio_mapping" 2>/dev/null || true
+pkill -f "[l]ivox_ros_driver2_node" 2>/dev/null || true
+pkill -f "[r]os2 launch livox_ros_driver2 msg_MID360_launch.py" 2>/dev/null || true
+pkill -f "[r]viz2" 2>/dev/null || true
+
+cd ~/work/nyush_rm_sentry
+PCD_INPUT=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+MAP_OUT_DIR=~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map \
+MAP_NAME=map \
+MAP_RESOLUTION=0.05 \
+PCD2PGM_FLAG_PASS_THROUGH=false \
+PCD2PGM_Z_MIN=0.20 \
+PCD2PGM_Z_MAX=1.80 \
+PCD2PGM_RADIUS=0.15 \
+PCD2PGM_POINT_COUNT=5 \
+./scripts/pcd2pgm_go2.sh
+
+# 注意: 这个 pcd2pgm 的 flag_pass_through 名字容易误导。
+# false = 保留 Z_MIN 到 Z_MAX 之间的点; true = 反选这个高度范围。
+
+# MID360 FAST-LIO + AMCL + Nav2 + VNC RViz
+# 默认只启动规划和 RViz, 不让 Go2 真动。
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_RVIZ=true \
+PUBLISH_INITIAL_POSE=true \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW=0.0 \
+START_GO2_CMD_BRIDGE=false \
+./scripts/start_mid360_fastlio_nav2_with_rviz.sh
+
+# 等价的短入口:
+cd ~/work/nyush_rm_sentry
+START_GO2_CMD_BRIDGE=false ./start_mid360_robot.sh
+
+# RViz 里 map/scan/机器人位姿都对齐后, 再打开真实运动桥。
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true \
+PUBLISH_INITIAL_POSE=true \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW=0.0 \
+START_GO2_CMD_BRIDGE=true \
+GO2_MAX_VX=0.20 \
+GO2_MAX_WZ=0.35 \
+./scripts/start_mid360_fastlio_nav2_with_rviz.sh
+
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=true \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_REMOTE_PRIORITY=true \
+GO2_REMOTE_DEADBAND=0.12 \
+GO2_REMOTE_HOLD_SEC=0.8 \
+GO2_MAX_VX=0.15 \
+GO2_MAX_WZ=0.30 \
+./scripts/start_mid360_fastlio_nav2_global_with_rviz.sh
+
+# 如果 RViz 里 scan/map 看起来前后左右反了，优先试这个。
+# 注意：ROS2 Foxy static_transform_publisher 参数顺序是 yaw,pitch,roll；
+# 脚本内已经处理，外部仍然只需要设置 LIDAR_TO_BASE_YAW。
+cd ~/work/nyush_rm_sentry
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=true \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_REMOTE_PRIORITY=true \
+GO2_REMOTE_DEADBAND=0.12 \
+GO2_REMOTE_HOLD_SEC=0.8 \
+GO2_MAX_VX=0.15 \
+GO2_MAX_WZ=0.30 \
+LIDAR_TO_BASE_YAW=3.1415926 \
+./scripts/start_mid360_fastlio_nav2_global_with_rviz.sh
+
+# 遥控器优先：暂停/恢复 Nav2 -> Go2 运动桥
+source /opt/ros/foxy/setup.bash
+ros2 param set /go2_cmd_bridge enabled false   # 遥控器完全接管
+ros2 param set /go2_cmd_bridge enabled true    # 恢复 Nav2 控制
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_REMOTE_PRIORITY=true \
+GO2_REMOTE_DEADBAND=0.12 \
+GO2_REMOTE_HOLD_SEC=0.8 \
+PUBLISH_INITIAL_POSE=true \
+AMCL_GLOBAL_LOCALIZATION=false \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW_DEG=0 \
+GO2_MAX_VX=0.15 \
+GO2_MAX_WZ=0.30 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+./scripts/start_mid360_fastlio_nav2_global_with_rviz.sh
+
+
+# RealSense D435i on Jetson / Go2 onboard computer
+# 现象：
+#   apt 版 librealsense 能看到设备，但 ROS2 wrapper 会报
+#   UVCIOC_CTRL_QUERY / Protocol error，无法发布 /camera 图像。
+# 处理：
+#   已编译 RSUSB 版 librealsense 到 ~/work/realsense_rsusb/install。
+#   第一次启动前先用 sudo 调整 Jetson USB 参数并解绑 uvcvideo。
+cd ~/work/nyush_rm_sentry
+sudo ./scripts/prepare_realsense_rsusb_jetson.sh
+
+# 底层检查：应该能完整列出 D435i，不应该再出现 UVCIOC_CTRL_QUERY。
+./scripts/check_realsense_rsusb.sh
+
+# 先低负载启动，只开 depth，确认能稳定出帧。
+ENABLE_COLOR=false \
+ENABLE_DEPTH=true \
+ENABLE_IMU=false \
+ALIGN_DEPTH=false \
+INITIAL_RESET=false \
+DEPTH_PROFILE=424,240,6 \
+./scripts/start_realsense_rsusb_foxy.sh
+
+source /opt/ros/foxy/setup.bash
+timeout 10 ros2 topic hz /camera/depth/image_rect_raw
+
+# 如果 depth 低负载能出帧，再打开 color/depth，仍然先保持 15Hz。
+ENABLE_IMU=false \
+ALIGN_DEPTH=false \
+INITIAL_RESET=false \
+DEPTH_PROFILE=640,480,15 \
+COLOR_PROFILE=640,480,15 \
+./scripts/start_realsense_rsusb_foxy.sh
+
+
+# RealSense 官方式 clean stack 路线：不使用 apt wrapper，不 source ~/nav_ws。
+# 目标是验证 clean RSUSB + realsense-ros 是否能稳定出帧。
+cd ~/work/nyush_rm_sentry
+./scripts/build_realsense_clean_rsusb_foxy.sh
+
+sudo ./scripts/prepare_realsense_rsusb_jetson.sh
+./scripts/check_realsense_clean_rsusb.sh
+
+ENABLE_COLOR=false \
+ENABLE_DEPTH=true \
+ENABLE_IMU=false \
+ALIGN_DEPTH=false \
+INITIAL_RESET=false \
+DEPTH_PROFILE=640,480,15 \
+./scripts/start_realsense_clean_rsusb_foxy.sh
+
+source ~/work/realsense_stack_clean/env.sh
+timeout 10 ros2 topic hz /camera/depth/image_rect_raw
+
+
+# RealSense native V4L 路线：不使用 RSUSB backend。
+# 当前机器是 Jetson L4T 35.3.1；librealsense v2.51.1 自带的
+# patch-realsense-ubuntu-L4T.sh 只支持 L4T 32.x，不能直接无脑跑。
+# 先用源码 native SDK v2.55.1 测试，如果 SDK 仍打不开 depth stream，
+# 再考虑更重的 Jetson kernel patch/native module 路线。
+cd ~/work/nyush_rm_sentry
+./scripts/build_realsense_native.sh
+
+# 每次 RealSense 开流失败后，先 reset，确认 Video 全部回到 uvcvideo。
+sudo ./scripts/reset_realsense_usb.sh
+lsusb -t | grep -E 'Video|Human|uvcvideo|usbhid'
+
+# 用 native librealsense 直接测 depth，不经过 ROS wrapper。
+source ~/work/realsense_stack_native/env.sh
+./scripts/check_realsense_native_depth.sh 640 480 15 30
+
+# 如果 native SDK 直测通过，再考虑用 native librealsense 重编 realsense-ros。
+# 如果 native SDK 直测仍失败，说明不是 ROS wrapper 问题。
+
+# 更底层的 V4L2 直测：不依赖 v4l2-ctl，也不依赖 librealsense。
+# 这一步直接调用 VIDIOC_S_FMT / VIDIOC_STREAMON。
+# 当前结论：
+#   /dev/video0 depth Z16 640x480@15 在 VIDIOC_S_FMT 失败，errno=5 I/O error。
+#   /dev/video4 color YUYV 640x480@15 可以正常 stream。
+cd ~/work/nyush_rm_sentry
+./scripts/check_realsense_v4l2_depth.sh /dev/video0 640 480 15 30 Z16
+./scripts/check_realsense_v4l2_depth.sh /dev/video4 640 480 15 10 YUYV
+
+# 如果 90 度方向相反，只改这一项重启测试：
+#   LIDAR_TO_BASE_YAW_DEG=-90
+#
+# 如果 scan 形状方向对了，但机器人在地图里的朝向整体差 90 度，
+# 不要再改 LIDAR_TO_BASE_YAW_DEG，改 initial pose:
+#   INITIAL_POSE_YAW_DEG=90
+#
+# RViz 对齐后再开真实运动桥：
+#   START_GO2_CMD_BRIDGE=true
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_REMOTE_PRIORITY=true \
+GO2_REMOTE_DEADBAND=0.12 \
+GO2_REMOTE_HOLD_SEC=0.8 \
+PUBLISH_INITIAL_POSE=true \
+AMCL_GLOBAL_LOCALIZATION=false \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW_DEG=0 \
+GO2_MAX_VX=0.15 \
+GO2_MAX_WZ=0.30 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+SCAN_MIN_HEIGHT=-3.0 \
+SCAN_MAX_HEIGHT=3.0 \
+./scripts/start_mid360_fastlio_nav2_global_with_rviz.sh
+
+# MID360 定位-only 稳定性测试：
+#   Livox + FAST-LIO + /cloud_registered_body -> /scan
+#   map_server + AMCL active
+#   不启动 Nav2 planner/controller/costmap，不开重 RViz，不让 Go2 运动
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_NAVIGATION=false \
+START_RVIZ=false \
+START_GO2_CMD_BRIDGE=false \
+PUBLISH_INITIAL_POSE=false \
+AMCL_STRICT_STARTUP=true \
+AMCL_REQUIRE_OUTPUT_TOPICS=false \
+MAP_SERVER_SETTLE_SEC=2 \
+AMCL_SETTLE_SEC=4 \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW_DEG=0 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+./scripts/start_mid360_localization_only.sh
+
+# 在另一个终端里跑时间戳诊断。让机器人慢慢转动/平移，观察 age/rate 是否跳变。
+cd ~/work/nyush_rm_sentry
+DIAG_DURATION=60 ./scripts/diagnose_mid360_nav_timing.sh
+
+# 如果诊断里 /scan age 正常，但 tf2 map->base_link / odom->base_link 经常断：
+#   先不要开 Nav2，继续定位-only；把诊断输出贴出来。
+# 如果诊断确认 cloud/scan 时间戳明显滞后 ROS now，可先只对 AMCL 用的 body cloud 做 restamp：
+#   RESTAMP_BODY_CLOUD=true
+
+# 如果定位-only 稳定，再启动完整 Nav2。先不启运动桥，RViz 使用轻量配置。
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+PUBLISH_INITIAL_POSE=false \
+AMCL_STRICT_STARTUP=true \
+AMCL_REQUIRE_OUTPUT_TOPICS=false \
+MAP_SERVER_SETTLE_SEC=2 \
+AMCL_SETTLE_SEC=4 \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW_DEG=0 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+./scripts/start_mid360_start_robot_style.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+PUBLISH_INITIAL_POSE=false \
+START_SCAN_AFTER_AMCL=true \
+INITIAL_POSE_X=0.0 \
+INITIAL_POSE_Y=0.0 \
+INITIAL_POSE_YAW_DEG=0 \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+./scripts/start_mid360_start_robot_style.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+PUBLISH_INITIAL_POSE=false \
+AMCL_GLOBAL_LOCALIZATION=true \
+AMCL_GLOBAL_LOCALIZATION_DELAY=3 \
+START_SCAN_AFTER_AMCL=true \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+PUBLISH_INITIAL_POSE=false \
+AMCL_GLOBAL_LOCALIZATION=true \
+AMCL_GLOBAL_LOCALIZATION_DELAY=3 \
+START_SCAN_AFTER_AMCL=true \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.80 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+./scripts/start_mid360_start_robot_style.sh
+
+# MID360 FAST-LIO map is built in livox_frame coordinates.
+# Use livox_frame as the localization base first; do not inject the 90 deg
+# lidar->base_link rotation into AMCL until scan-map alignment is verified.
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+NAV_BASE_FRAME=livox_frame \
+NAV_ODOM_TOPIC=/Odometry \
+PUBLISH_INITIAL_POSE=false \
+AMCL_GLOBAL_LOCALIZATION=true \
+AMCL_GLOBAL_LOCALIZATION_DELAY=3 \
+START_SCAN_AFTER_AMCL=true \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.80 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
+
+# Original start_robot.sh style: use 3D ICP registration against the FAST-LIO PCD
+# to publish map->odom first, then run Nav2. This is closer to the upstream
+# nyush_rm_sentry flow than AMCL global localization on a 2D PGM.
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+LOCALIZATION_MODE=icp \
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+NAV_BASE_FRAME=livox_frame \
+NAV_ODOM_TOPIC=/Odometry \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
+ICP_LASER_FRAME_ID=livox_frame \
+ICP_RANGE_ODOM_FRAME_ID=odom \
+ICP_ODOM_FRAME_ID=odom \
+ICP_INITIAL_POSE_X=0.0 \
+ICP_INITIAL_POSE_Y=0.0 \
+ICP_INITIAL_POSE_YAW=0.0 \
+ICP_THRESH=0.35 \
+ICP_XY_OFFSET=0.75 \
+ICP_XY_SEARCH_STEPS=3 \
+ICP_YAW_OFFSET=180.0 \
+ICP_YAW_RESOLUTION=15.0 \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.80 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
+
+source /opt/ros/foxy/setup.bash
+source ~/nav_ws/install/setup.bash
+source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
+ros2 topic echo /cmd_vel
+
+# Keyboard cmd_vel debug.
+# Use this to test the Go2 command bridge without Nav2 goals.
+# First start a bridge with larger debug limits and command logging.
+# Keys:
+#   w/s = forward/back, a/d = left/right, q/e = +wz/-wz, space/x = stop
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+./scripts/start_go2_cmd_bridge_debug.sh
+source /opt/ros/foxy/setup.bash
+source ~/nav_ws/install/setup.bash
+source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+unset CYCLONEDDS_URI
+./scripts/keyboard_cmd_vel_debug.py --vx 0.30 --vy 0.30 --wz 0.70 --latch
+
+# In another shell, watch what the bridge actually sends:
+# tail -f /tmp/go2_cmd_bridge_debug.log
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+LOCALIZATION_MODE=icp \
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=true \
+NAV2_BT_XML=/opt/ros/foxy/share/nav2_bt_navigator/behavior_trees/navigate_w_replanning_time.xml \
+GO2_REMOTE_PRIORITY=true \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_LOG_COMMANDS=true \
+GO2_LOG_INTERVAL_SEC=0.3 \
+GO2_MAX_VX=0.30 \
+GO2_MAX_VY=0.30 \
+GO2_MAX_WZ=0.70 \
+NAV_BASE_FRAME=livox_frame \
+NAV_ODOM_TOPIC=/Odometry \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
+ICP_LASER_FRAME_ID=livox_frame \
+ICP_RANGE_ODOM_FRAME_ID=odom \
+ICP_ODOM_FRAME_ID=odom \
+ICP_INITIAL_POSE_X=0.0 \
+ICP_INITIAL_POSE_Y=0.0 \
+ICP_INITIAL_POSE_YAW=0.0 \
+ICP_THRESH=0.35 \
+ICP_XY_OFFSET=0.75 \
+ICP_XY_SEARCH_STEPS=3 \
+ICP_YAW_OFFSET=180.0 \
+ICP_YAW_RESOLUTION=15.0 \
+SCAN_TARGET_FRAME=livox_frame \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.80 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
