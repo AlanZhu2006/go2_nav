@@ -47,7 +47,8 @@
 里程计 topic: /Odometry
 scan 来源点云: /cloud_registered_body
 scan target frame: livox_frame
-全局 PCD 地图: ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
+原始全局 PCD 地图: ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
+ICP 专用过滤 PCD: ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd
 Nav2 2D 地图: ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
 Go2 速度上限: vx=0.30, vy=0.30, wz=0.70
 遥控器优先: 开启
@@ -169,7 +170,7 @@ START_RVIZ=true \
 START_GO2_CMD_BRIDGE=false \
 NAV_BASE_FRAME=livox_frame \
 NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -213,7 +214,7 @@ GO2_MAX_VY=0.30 \
 GO2_MAX_WZ=0.70 \
 NAV_BASE_FRAME=livox_frame \
 NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -327,6 +328,40 @@ POINT_COUNT=5
 
 原因是 MID360 的点云里会包含地面、桌面、天花板、支架附近点。过滤范围太宽会让天花板或地面错误投影到 2D 地图里，范围太窄又会让墙体太稀疏。
 
+注意：Nav2 不直接读取 PCD。Nav2 的 `map_server` 读取的是：
+
+```text
+~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
+```
+
+而 ICP 定位直接读取 PCD。为了减少天花板、高处杂点和长墙误匹配，我们给 ICP 单独生成一张过滤后的 PCD：
+
+```bash
+cd ~/work/nyush_rm_sentry
+
+./scripts/filter_pcd_for_icp.py \
+  --input ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+  --output ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
+  --z-min -0.20 \
+  --z-max 1.50 \
+  --voxel 0.05 \
+  --stat-nb 20 \
+  --stat-std 2.0
+```
+
+当前推荐：
+
+```text
+Nav2 map_server:
+  nav2_map/map.yaml
+
+ICP registration:
+  fastlio_map_icp_zm020_150.pcd
+
+原始 fastlio_map.pcd:
+  只作为备份和重新生成地图的源文件
+```
+
 ## 导航架构
 
 当前定位没有走 AMCL 作为主线，而是走更接近原始 `start_robot.sh` 的 3D ICP 对齐路线。
@@ -341,7 +376,7 @@ FAST-LIO:
 
 ICP registration:
   输入当前 /cloud_registered_body
-  输入保存好的 fastlio_map.pcd
+  输入过滤后的 fastlio_map_icp_zm020_150.pcd
   输出 map -> odom
 
 pointcloud_to_laserscan:
