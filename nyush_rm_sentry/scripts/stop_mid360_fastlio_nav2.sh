@@ -23,6 +23,7 @@ patterns=(
     "/pointcloud_to_laserscan/lib/pointcloud_to_laserscan/pointcloud_to_laserscan_node"
     "static_transform_publisher .* livox_frame base_link"
     "/home/unitree/nav_ws/install/fast_lio/lib/fast_lio/fastlio_mapping"
+    "/home/unitree/work/nyush_rm_sentry/scripts/republish_odom_base_link.py"
     "/home/unitree/nav_ws/install/livox_ros_driver2/lib/livox_ros_driver2/livox_ros_driver2_node"
     "ros2 launch livox_ros_driver2 msg_MID360_launch.py"
     "/home/unitree/work/nyush_rm_sentry/scripts/start_mid360_fastlio_nav2_with_rviz.sh"
@@ -40,4 +41,4 @@ for pattern in "${patterns[@]}"; do
 done
 
 echo ">>> Remaining matching processes:"
-pgrep -af 'start_mid360_fastlio_nav2|livox_ros_driver2|fastlio_mapping|static_transform_publisher .* livox_frame base_link|publish_static_map_to_odom_from_pose|icp_registration|pointcloud_to_laserscan|nav2_bringup|nav2_.*server|bt_navigator|amcl|rviz2|go2_cmd_bridge' || true
+pgrep -af 'start_mid360_fastlio_nav2|livox_ros_driver2|fastlio_mapping|republish_odom_base_link|static_transform_publisher .* livox_frame base_link|publish_static_map_to_odom_from_pose|icp_registration|pointcloud_to_laserscan|nav2_bringup|nav2_.*server|bt_navigator|amcl|rviz2|go2_cmd_bridge' || true

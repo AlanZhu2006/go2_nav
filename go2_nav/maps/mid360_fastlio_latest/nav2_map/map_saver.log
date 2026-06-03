@@ -1,14 +1,14 @@
-[INFO] [1780292668.929345216] [map_saver]: 
+[INFO] [1780399228.877579256] [map_saver]: 
 	map_saver lifecycle node launched. 
 	Waiting on external lifecycle transitions to activate
 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
-[INFO] [1780292668.929822862] [map_saver]: Creating
-[INFO] [1780292668.929975858] [map_saver]: Saving map from '/pcd2pgm_map_9563' topic to '/home/unitree/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map' file
-[WARN] [1780292668.930017395] [map_saver]: Free threshold unspecified. Setting it to default value: 0.250000
-[WARN] [1780292668.930048916] [map_saver]: Occupied threshold unspecified. Setting it to default value: 0.650000
-[INFO] [map_io]: Received a 132 X 268 map @ 0.05 m/pix
+[INFO] [1780399228.878890069] [map_saver]: Creating
+[INFO] [1780399228.879736605] [map_saver]: Saving map from '/pcd2pgm_map_55382' topic to '/home/unitree/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map' file
+[WARN] [1780399228.880076525] [map_saver]: Free threshold unspecified. Setting it to default value: 0.250000
+[WARN] [1780399228.880220531] [map_saver]: Occupied threshold unspecified. Setting it to default value: 0.650000
+[INFO] [map_io]: Received a 345 X 630 map @ 0.05 m/pix
 [INFO] [map_io]: Writing map occupancy data to /home/unitree/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.pgm
 [INFO] [map_io]: Writing map metadata to /home/unitree/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
 [INFO] [map_io]: Map saved
-[INFO] [1780292669.357050484] [map_saver]: Map saved successfully
-[INFO] [1780292669.357210072] [map_saver]: Destroying
+[INFO] [1780399229.659798785] [map_saver]: Map saved successfully
+[INFO] [1780399229.660018092] [map_saver]: Destroying

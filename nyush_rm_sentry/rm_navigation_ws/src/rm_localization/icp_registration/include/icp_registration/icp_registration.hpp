@@ -79,6 +79,7 @@ private:
   double score_;
   double thresh_;
   double xy_offset_;
+  int xy_search_steps_;
   double yaw_offset_;
   double yaw_resolution_;
   geometry_msgs::msg::Pose initial_pose_;

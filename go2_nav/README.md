@@ -1,92 +1,99 @@
-# Unitree Go2 + MID360 导航部署记录
+# Unitree Go2 + MID360 Nav2 Deployment Notes
 
-这个仓库是我们当前 Go2 导航部署的工作备份。它不是原始 `nyush_rm_sentry` 的完整复刻，而是在参考其中可用结构的基础上，围绕我们自己的 Unitree Go2 机器狗、外接 Livox MID360、ROS 2 Foxy、FAST-LIO、ICP 定位和 Nav2 做出的实际部署记录。
+Last updated: 2026-06-03
 
-当前最重要的命令手册在：
+This directory is the main working record for the current Unitree Go2 navigation deployment. The repository is not a clean copy of `nyush_rm_sentry`; instead, `go2_nav` is the Go2 navigation project record, while `~/work/nyush_rm_sentry` is currently used as a practical script/config workspace borrowed from another project.
+
+The most important files are:
 
 ```text
+~/work/go2_nav/README.md
 ~/work/go2_nav/command.txt
-```
-
-当前主要脚本和配置在：
-
-```text
-~/work/nyush_rm_sentry/scripts
-~/work/nyush_rm_sentry/config
-```
-
-当前地图文件在：
-
-```text
+~/work/go2_nav/env.sh
 ~/work/go2_nav/maps/mid360_fastlio_latest
+
+~/work/nyush_rm_sentry/scripts/start_mid360_start_robot_style.sh
+~/work/nyush_rm_sentry/scripts/start_mid360_fastlio_nav2_with_rviz.sh
+~/work/nyush_rm_sentry/scripts/stop_mid360_fastlio_nav2.sh
+~/work/nyush_rm_sentry/scripts/go2_cmd_bridge.py
+~/work/nyush_rm_sentry/scripts/republish_odom_base_link.py
+
+~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml
+~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz
 ```
 
-## 当前状态
+`command.txt` remains the copy-paste command sheet. This README explains what those commands are doing, why the current parameters are shaped this way, and what we changed during recent debugging.
 
-目前已经跑通的主线是：
+## Current Recommended Stack
+
+The current recommended stack is:
 
 ```text
-外接 MID360
+Livox MID360
   -> livox_ros_driver2
   -> FAST-LIO
-  -> /Odometry 和 /cloud_registered_body
-  -> ICP registration 对齐保存好的 FAST-LIO PCD
-  -> 发布 map -> odom
-  -> pointcloud_to_laserscan
+  -> /Odometry and /cloud_registered_body
+  -> ICP registration against saved FAST-LIO PCD
+  -> map -> odom
+  -> static livox_frame -> base_link yaw +90 deg
+  -> republish /Odometry as /odom_base_link
+  -> pointcloud_to_laserscan in base_link
   -> /scan
-  -> Nav2 planner/controller
+  -> Nav2 with robot_base_frame=base_link
   -> /cmd_vel
   -> go2_cmd_bridge.py
   -> Unitree SportClient.Move(vx, vy, wz)
 ```
 
-当前稳定参数：
+The current preferred model is the `head-forward` model:
 
 ```text
-导航 base frame: livox_frame
-里程计 topic: /Odometry
-scan 来源点云: /cloud_registered_body
-scan target frame: livox_frame
-原始全局 PCD 地图: ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
-ICP 专用过滤 PCD: ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd
-Nav2 2D 地图: ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
-Go2 速度上限: vx=0.30, vy=0.30, wz=0.70
-遥控器优先: 开启
+Nav2 robot_base_frame: base_link
+Nav2 odom_topic:      /odom_base_link
+Scan target frame:    base_link
+Lidar body frame:     livox_frame
+Lidar -> base yaw:    +90 deg
+Go2 bridge mapping:   no vx/vy swap
+Go2 lateral speed:    GO2_MAX_VY=0.00
 ```
 
-目前最关键的经验：
+This replaced the earlier temporary model:
 
 ```text
-不要同时存在两个定位节点发布 map -> odom。
-如果有两个 icp_registration_node，RViz 里的 scan/map 会抖动、跳变、看起来像定位坏掉。
-每次启动前都先运行 stop_mid360_fastlio_nav2.sh。
+Nav2 robot_base_frame: livox_frame
+Nav2 odom_topic:      /Odometry
+Scan target frame:    livox_frame
+Go2 bridge mapping:   swap vx/vy and rotate command by 90 deg
 ```
 
-## 硬件和网络
+The old `livox_frame` model was useful to get the first closed loop running, but it made Nav2 reason in the lidar/body frame and then patched the velocity at the last step. The current `base_link/head-forward` model is cleaner because Nav2 now plans in the robot body frame.
 
-当前硬件：
+## Hardware And Network
+
+Current hardware:
 
 ```text
-机器人: Unitree Go2
-计算机: Go2 自带 Ubuntu 20.04 arm64 小电脑
-ROS: ROS 2 Foxy
-外接雷达: Livox MID360
-远程图形界面: x11vnc + Xvfb + XFCE，显示号 :1
+Robot:        Unitree Go2
+Computer:     Go2 onboard Ubuntu 20.04 arm64 computer
+ROS:          ROS 2 Foxy
+External lidar: Livox MID360
+Remote GUI:   Xvfb + x11vnc + XFCE on DISPLAY=:1
+VNC port:     5901
 ```
 
-当前网络：
+Current network:
 
-| 接口 | 地址 | 用途 |
+| Interface | Address | Purpose |
 | --- | --- | --- |
-| `wlan0` | `10.209.69.61` | 笔记本 SSH 和 VNC 连接 |
-| `eth0` | `192.168.123.18/24` | Unitree 内部网络 |
-| `eth0` | `192.168.1.2/24` | MID360 主机接收地址 |
-| MID360 | `192.168.1.3` | 雷达地址 |
-| `eth1` | 不使用 | USB 拓展坞网口，不再用于 MID360 |
+| `wlan0` | `10.209.69.61` | SSH and VNC from laptop |
+| `eth0` | `192.168.123.18/24` | Unitree internal network |
+| `eth0` | `192.168.1.2/24` | MID360 host address |
+| MID360 | `192.168.1.3` | Lidar address |
+| `eth1` | unused | USB ethernet adapter; no longer used for MID360 |
 
-我们之前试过用 USB 拓展坞网口接 MID360，但出现过 TX error、链路不稳定、ping 不可靠等问题。现在稳定方案是把 MID360 接在 Go2 原生网口链路上，也就是 `eth0`。
+We tried the USB ethernet adapter for MID360 earlier, but it showed TX errors, unstable route behavior, and unreliable ping. The stable choice is to use Go2's native `eth0`, with both Unitree internal network and MID360 subnet on the same interface.
 
-检查网络：
+Basic network check:
 
 ```bash
 ip -br addr show eth0
@@ -94,71 +101,59 @@ ip route get 192.168.1.3
 ping -I eth0 -c 3 192.168.1.3
 ```
 
-期望看到类似：
+Expected route:
 
 ```text
 192.168.1.3 dev eth0 src 192.168.1.2
 ```
 
-## 仓库结构
+## Shell Environment
 
-Git 备份仓库根目录是：
-
-```text
-~/work
-```
-
-这个仓库故意没有追踪全部 build 产物，只追踪当前部署需要的关键文件。
-
-重点文件：
-
-```text
-go2_nav/README.md
-go2_nav/command.txt
-go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
-go2_nav/maps/mid360_fastlio_latest/nav2_map/map.pgm
-go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
-
-nyush_rm_sentry/scripts/start_mid360_fastlio_mapping.sh
-nyush_rm_sentry/scripts/save_mid360_fastlio_map.sh
-nyush_rm_sentry/scripts/pcd2pgm_go2.sh
-nyush_rm_sentry/scripts/start_mid360_start_robot_style.sh
-nyush_rm_sentry/scripts/start_mid360_fastlio_nav2_with_rviz.sh
-nyush_rm_sentry/scripts/stop_mid360_fastlio_nav2.sh
-nyush_rm_sentry/scripts/go2_cmd_bridge.py
-nyush_rm_sentry/scripts/keyboard_cmd_vel_debug.py
-nyush_rm_sentry/scripts/start_go2_cmd_bridge_debug.sh
-
-nyush_rm_sentry/config/go2_nav2_params_light.yaml
-nyush_rm_sentry/config/go2_nav2_light.rviz
-```
-
-不作为主要备份内容的目录：
-
-```text
-realsense_rsusb/
-realsense_stack_clean/
-realsense_stack_native/
-nav_ws/build/
-nav_ws/install/
-ROS 日志和临时文件
-```
-
-## 快速启动
-
-先 SSH 到 Go2：
+Use:
 
 ```bash
-ssh unitree@10.209.69.61
+source ~/work/go2_nav/env.sh
 ```
 
-VNC 从笔记本连接：
+This loads the Foxy/navigation environment and forces ROS 2 tooling to use FastDDS/FastRTPS:
 
 ```text
-10.209.69.61:5901
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+CYCLONEDDS_URI unset
+CYCLONEDDS_HOME unset
+DISPLAY=:1
 ```
 
-先启动定位和 Nav2，但不让机器人运动：
+Why this matters:
+
+```text
+ROS 2 Foxy CLI/Nav2/FAST-LIO/ICP should use rmw_fastrtps_cpp on this machine.
+Unitree SportClient internally needs CycloneDDS libraries for the Go2 SDK path.
+Those are separate concerns.
+```
+
+We previously had a `~/.bashrc` fishros block that defaulted Foxy terminals to `rmw_cyclonedds_cpp` and exported `CYCLONEDDS_HOME`. That caused confusing behavior where the navigation stack used FastDDS but diagnostic terminals used CycloneDDS. `~/.bashrc` has now been adjusted to automatically source:
+
+```text
+~/work/go2_nav/env.sh
+```
+
+New terminals should therefore default to FastDDS and `DISPLAY=:1`. To opt out and use the old ROS chooser:
+
+```bash
+GO2_NAV_AUTO_ENV=0 bash
+```
+
+## Quick Start: Safe Head-Forward Test
+
+Always stop the old stack first:
+
+```bash
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+```
+
+First run without Go2 motion:
 
 ```bash
 cd ~/work/nyush_rm_sentry
@@ -168,9 +163,13 @@ LOCALIZATION_MODE=icp \
 START_NAVIGATION=true \
 START_RVIZ=true \
 START_GO2_CMD_BRIDGE=false \
-NAV_BASE_FRAME=livox_frame \
-NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
+NAV2_PARAMS_FILE=~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml \
+RVIZ_CONFIG=~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz \
+NAV_BASE_FRAME=base_link \
+FASTLIO_ODOM_TOPIC=/Odometry \
+NAV_ODOM_TOPIC=/odom_base_link \
+LIDAR_TO_BASE_YAW_DEG=90 \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -183,18 +182,29 @@ ICP_XY_OFFSET=0.75 \
 ICP_XY_SEARCH_STEPS=3 \
 ICP_YAW_OFFSET=180.0 \
 ICP_YAW_RESOLUTION=15.0 \
-SCAN_TARGET_FRAME=livox_frame \
+SCAN_TARGET_FRAME=base_link \
 SCAN_ANGLE_INCREMENT=0.0174533 \
 SCAN_RANGE_MIN=0.30 \
 SCAN_RANGE_MAX=8.0 \
 SCAN_USE_INF=false \
 SCAN_MIN_HEIGHT=0.20 \
-SCAN_MAX_HEIGHT=1.80 \
+SCAN_MAX_HEIGHT=1.50 \
 SCAN_TRANSFORM_TOLERANCE=0.50 \
 ./scripts/start_mid360_start_robot_style.sh
 ```
 
-确认 RViz 中 map、scan、odom 稳定后，再启动带运动桥接的完整导航：
+Check RViz:
+
+```text
+Fixed Frame = map
+Map visible
+LaserScan aligns with map
+Odom display topic = /odom_base_link
+GlobalPlan looks sane after sending a goal
+No Go2 movement because START_GO2_CMD_BRIDGE=false
+```
+
+Only after RViz alignment is sane, enable Go2 motion:
 
 ```bash
 cd ~/work/nyush_rm_sentry
@@ -205,16 +215,28 @@ START_NAVIGATION=true \
 START_RVIZ=true \
 START_GO2_CMD_BRIDGE=true \
 NAV2_BT_XML=/opt/ros/foxy/share/nav2_bt_navigator/behavior_trees/navigate_w_replanning_time.xml \
+NAV2_PARAMS_FILE=~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml \
+RVIZ_CONFIG=~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz \
 GO2_REMOTE_PRIORITY=true \
 GO2_SEND_ZERO_WHEN_IDLE=false \
 GO2_LOG_COMMANDS=true \
 GO2_LOG_INTERVAL_SEC=0.3 \
 GO2_MAX_VX=0.30 \
-GO2_MAX_VY=0.30 \
+GO2_MAX_VY=0.00 \
 GO2_MAX_WZ=0.70 \
-NAV_BASE_FRAME=livox_frame \
-NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
+GO2_DEADBAND_V=0.02 \
+GO2_DEADBAND_W=0.04 \
+GO2_MIN_CMD_V=0.10 \
+GO2_MIN_CMD_W=0.20 \
+GO2_SWAP_XY=false \
+GO2_X_SIGN=1.0 \
+GO2_Y_SIGN=1.0 \
+GO2_WZ_SIGN=1.0 \
+NAV_BASE_FRAME=base_link \
+FASTLIO_ODOM_TOPIC=/Odometry \
+NAV_ODOM_TOPIC=/odom_base_link \
+LIDAR_TO_BASE_YAW_DEG=90 \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -227,41 +249,78 @@ ICP_XY_OFFSET=0.75 \
 ICP_XY_SEARCH_STEPS=3 \
 ICP_YAW_OFFSET=180.0 \
 ICP_YAW_RESOLUTION=15.0 \
-SCAN_TARGET_FRAME=livox_frame \
+SCAN_TARGET_FRAME=base_link \
 SCAN_ANGLE_INCREMENT=0.0174533 \
 SCAN_RANGE_MIN=0.30 \
 SCAN_RANGE_MAX=8.0 \
 SCAN_USE_INF=false \
 SCAN_MIN_HEIGHT=0.20 \
-SCAN_MAX_HEIGHT=1.80 \
+SCAN_MAX_HEIGHT=1.50 \
 SCAN_TRANSFORM_TOLERANCE=0.50 \
 ./scripts/start_mid360_start_robot_style.sh
 ```
 
-查看实际发给 Go2 的运动命令：
+Watch Go2 commands:
 
 ```bash
 tail -f /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log
 ```
 
-停止整套导航：
+Stop everything:
 
 ```bash
 cd ~/work/nyush_rm_sentry
 ./scripts/stop_mid360_fastlio_nav2.sh
 ```
 
-只停止运动桥接：
+Emergency stop only the motion bridge:
 
 ```bash
 pkill -TERM -f '[/]go2_cmd_bridge.py'
 ```
 
-## 建图流程
+## Map Files
 
-建图使用 MID360 + FAST-LIO。
+Current map directory:
 
-启动建图：
+```text
+~/work/go2_nav/maps/mid360_fastlio_latest
+```
+
+Important files:
+
+```text
+fastlio_map.pcd
+fastlio_latest.pcd -> fastlio_map.pcd
+fastlio_map_icp_z020_150.pcd
+fastlio_map_icp_zm020_150.pcd
+nav2_map/map.yaml
+nav2_map/map.pgm
+nav2_map/pcd2pgm_go2.yaml
+```
+
+Current recommendation:
+
+```text
+Nav2 map_server:
+  ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
+
+ICP registration:
+  ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
+```
+
+Earlier we generated filtered PCDs for ICP:
+
+```text
+fastlio_map_icp_z020_150.pcd
+fastlio_map_icp_zm020_150.pcd
+```
+
+However, a 2026-06-02 ICP sweep showed the filtered PCD was not reliable at the current site, while the raw `fastlio_map.pcd` produced the best score then. Keep the filtered PCDs as experiments, not the current default.
+
+## Mapping Workflow
+
+Start MID360 FAST-LIO mapping:
 
 ```bash
 cd ~/work/nyush_rm_sentry
@@ -270,22 +329,22 @@ cd ~/work/nyush_rm_sentry
 START_RVIZ=true ./scripts/start_mid360_fastlio_mapping.sh
 ```
 
-脚本启动后可以在交互提示里输入：
+Interactive prompt:
 
 ```text
-1 + Enter  保存 FAST-LIO PCD
-s + Enter  查看状态
-q + Enter  退出
+1 + Enter  save FAST-LIO PCD
+s + Enter  show status
+q + Enter  quit
 ```
 
-期望输出：
+Expected output:
 
 ```text
 ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
 ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_latest.pcd
 ```
 
-如果需要手动保存：
+Manual save:
 
 ```bash
 cd ~/work/nyush_rm_sentry
@@ -293,7 +352,7 @@ cd ~/work/nyush_rm_sentry
 ls -lh ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
 ```
 
-将 FAST-LIO PCD 转成 Nav2 需要的 2D `map.pgm` 和 `map.yaml`：
+Convert FAST-LIO PCD into Nav2 PGM/YAML:
 
 ```bash
 cd ~/work/nyush_rm_sentry
@@ -304,139 +363,374 @@ MAP_NAME=map \
 MAP_RESOLUTION=0.05 \
 PCD2PGM_FLAG_PASS_THROUGH=false \
 PCD2PGM_Z_MIN=0.20 \
-PCD2PGM_Z_MAX=1.80 \
+PCD2PGM_Z_MAX=1.50 \
 PCD2PGM_RADIUS=0.15 \
 PCD2PGM_POINT_COUNT=5 \
 ./scripts/pcd2pgm_go2.sh
 ```
 
-期望输出：
+Height filtering matters. The MID360 point cloud can include ground, ceiling, furniture, brackets, and stray long-range points. Too wide a Z range projects junk into the 2D map; too narrow a Z range makes walls sparse.
+
+## Coordinate Frames
+
+The important frames are:
 
 ```text
-~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.pgm
-~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
+map
+  -> odom                         published by icp_registration
+    -> livox_frame                published by FAST-LIO
+      -> base_link                static yaw +90 deg
 ```
 
-这一步的高度过滤很关键。我们现在使用：
+Current static transform:
 
 ```text
-Z_MIN=0.20
-Z_MAX=1.80
-RADIUS=0.15
-POINT_COUNT=5
+livox_frame -> base_link
+xyz = (0, 0, 0)
+rpy = (0, 0, +90 deg)
 ```
 
-原因是 MID360 的点云里会包含地面、桌面、天花板、支架附近点。过滤范围太宽会让天花板或地面错误投影到 2D 地图里，范围太窄又会让墙体太稀疏。
-
-注意：Nav2 不直接读取 PCD。Nav2 的 `map_server` 读取的是：
+In Foxy `static_transform_publisher`, the script passes arguments in yaw/pitch/roll order for this usage. The startup script handles:
 
 ```text
-~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
+LIDAR_TO_BASE_YAW_DEG=90
 ```
 
-而 ICP 定位直接读取 PCD。为了减少天花板、高处杂点和长墙误匹配，我们给 ICP 单独生成一张过滤后的 PCD：
+### Why `/odom_base_link` Exists
+
+FAST-LIO publishes `/Odometry`, but that odometry describes the FAST-LIO body/lidar frame, effectively:
+
+```text
+header.frame_id = odom
+child_frame_id = livox_frame
+pose = odom -> livox_frame
+```
+
+RViz's `Odometry` display does not automatically draw `odom -> base_link` just because TF can compose it. It draws the pose carried by the selected `nav_msgs/Odometry` topic.
+
+Therefore, for the head-forward model we add:
+
+```text
+/Odometry          original FAST-LIO odom for livox_frame
+/odom_base_link    republished odom whose pose is odom -> base_link
+```
+
+The republisher is:
+
+```text
+~/work/nyush_rm_sentry/scripts/republish_odom_base_link.py
+```
+
+The startup script launches it automatically when:
+
+```text
+NAV_BASE_FRAME != FASTLIO_BODY_FRAME
+NAV_ODOM_TOPIC != FASTLIO_ODOM_TOPIC
+```
+
+Current command uses:
+
+```text
+FASTLIO_ODOM_TOPIC=/Odometry
+NAV_ODOM_TOPIC=/odom_base_link
+NAV_BASE_FRAME=base_link
+```
+
+RViz config:
+
+```text
+~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz
+```
+
+In that RViz config, the red `Odom` display subscribes to:
+
+```text
+/odom_base_link
+```
+
+This was added because we initially changed Nav2 to `base_link`, but RViz still showed the old `/Odometry` arrow. That made it look like nothing had changed. The actual issue was that the RViz `Odometry` display topic and Nav2 odom topic had to be changed separately.
+
+## ICP Localization
+
+The ICP node:
+
+```text
+~/work/nyush_rm_sentry/rm_navigation_ws/src/rm_localization/icp_registration
+```
+
+Current runtime config is generated at:
+
+```text
+/tmp/mid360_fastlio_nav2/icp_registration_runtime.yaml
+```
+
+Important current parameters:
+
+```text
+pcd_path:              ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd
+pointcloud_topic:      /cloud_registered_body
+map_frame_id:          map
+odom_frame_id:         odom
+range_odom_frame_id:   odom
+laser_frame_id:        livox_frame
+thresh:                0.35
+xy_offset:             0.75
+xy_search_steps:       3
+yaw_offset:            180.0 deg
+yaw_resolution:        15.0 deg
+initial_pose:          [0, 0, 0, 0, 0, 0]
+```
+
+The ICP node publishes:
+
+```text
+map -> odom
+```
+
+It receives current geometry from:
+
+```text
+/cloud_registered_body
+```
+
+It receives manual relocalization triggers from:
+
+```text
+/initialpose
+```
+
+### 2026-06-03 ICP Bug And Fix
+
+We hit a recurring issue where RViz showed scan/map misalignment, and ICP score was much worse than previous good runs.
+
+Observed before the fix:
+
+```text
+score: 0.179041
+score after retriggering /initialpose: 0.180563
+score after stack restart: 0.156628
+```
+
+This was not just a stale RViz display. The score was genuinely high and the TF yaw was wrong. One observed bad TF was:
+
+```text
+map -> base_link yaw ~= 131.4 deg
+```
+
+The old code had two search-window problems:
+
+```text
+ICP_XY_SEARCH_STEPS was declared in runtime YAML but ignored in C++.
+The code always searched only i,j = -1..1.
+
+ICP_YAW_OFFSET was converted from degrees to radians, then used as an int loop bound.
+With ICP_YAW_OFFSET=180 deg, the actual loop searched only about +/-45 deg.
+```
+
+The relevant broken loop was logically:
+
+```cpp
+for (int i = -1; i <= 1; i++) {
+  for (int j = -1; j <= 1; j++) {
+    for (int k = -yaw_offset_; k <= yaw_offset_; k++) {
+      yaw = initial_yaw + k * yaw_resolution_;
+    }
+  }
+}
+```
+
+Now it uses the real configured search window:
+
+```text
+xy_steps = ICP_XY_SEARCH_STEPS
+yaw_steps = ceil(yaw_offset / yaw_resolution)
+```
+
+After rebuilding `icp_registration`, the log shows:
+
+```text
+search window: xy_steps=3 xy_offset=0.750 yaw_steps=12 yaw_resolution=0.262 rad
+align used: 70419.312253 ms
+score: 0.032467
+```
+
+The first search is now slower, around 70 seconds in the observed run, because it actually searches:
+
+```text
+xy candidates: 7 x 7
+yaw candidates: 25
+total rough candidates: 1225
+```
+
+This is slower but much safer than accepting the wrong yaw. After the fix, observed TF was:
+
+```text
+map -> odom:      xyz=(2.989, 2.291, -0.350) yaw=-104.9 deg
+odom -> base_link xyz=(-0.029, -0.027, -0.027) yaw=90.0 deg
+map -> base_link: xyz=(2.969, 2.321, -0.381) yaw=-14.9 deg
+```
+
+This matched RViz much better.
+
+Build command used after the fix:
 
 ```bash
-cd ~/work/nyush_rm_sentry
-
-./scripts/filter_pcd_for_icp.py \
-  --input ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
-  --output ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
-  --z-min -0.20 \
-  --z-max 1.50 \
-  --voxel 0.05 \
-  --stat-nb 20 \
-  --stat-std 2.0
+source ~/work/go2_nav/env.sh
+cd ~/work/nyush_rm_sentry/rm_navigation_ws
+colcon build --symlink-install --packages-select icp_registration
 ```
 
-当前推荐：
+### ICP Score Interpretation
+
+Use ICP score as a warning signal:
 
 ```text
-Nav2 map_server:
-  nav2_map/map.yaml
-
-ICP registration:
-  fastlio_map_icp_zm020_150.pcd
-
-原始 fastlio_map.pcd:
-  只作为备份和重新生成地图的源文件
+~0.003   excellent; seen in an earlier good sweep
+~0.03    acceptable/current after search-window fix
+~0.15+   suspicious; likely wrong alignment or weak geometry
+~0.35+   above current threshold; should fail
 ```
 
-## 导航架构
-
-当前定位没有走 AMCL 作为主线，而是走更接近原始 `start_robot.sh` 的 3D ICP 对齐路线。
-
-整体关系：
+Current threshold is still:
 
 ```text
-FAST-LIO:
-  odom -> livox_frame
-  /Odometry
-  /cloud_registered_body
-
-ICP registration:
-  输入当前 /cloud_registered_body
-  输入过滤后的 fastlio_map_icp_zm020_150.pcd
-  输出 map -> odom
-
-pointcloud_to_laserscan:
-  输入 /cloud_registered_body
-  输出 /scan
-  frame 使用 livox_frame
-
-Nav2:
-  base_frame 使用 livox_frame
-  odom_topic 使用 /Odometry
-  map 使用 nav2_map/map.yaml
+ICP_THRESH=0.35
 ```
 
-为什么当前用 `livox_frame` 作为导航 base：
+This threshold is intentionally loose enough to avoid startup failure, but the practical warning threshold should be much lower. If score is `0.15` or worse, do not trust navigation even if the node says it succeeded.
+
+Check the score:
+
+```bash
+tail -n 120 /tmp/mid360_fastlio_nav2/icp_registration.log
+```
+
+Look for:
 
 ```text
-FAST-LIO 地图是在 livox_frame/body 坐标逻辑下构建的。
-如果过早把 lidar -> base_link 的 90 度旋转注入 AMCL/Nav2，scan-map 对齐会更容易混乱。
-因此当前先用 livox_frame 打通定位和导航主链路。
+search window: ...
+score: ...
 ```
 
-我们试过 `base_link`、`LIDAR_TO_BASE_YAW_DEG=90`、AMCL global localization 等组合，但目前最稳定的是：
+## Nav2 Controller And Costmap
+
+Current head-forward parameter file:
 
 ```text
-LOCALIZATION_MODE=icp
-NAV_BASE_FRAME=livox_frame
-SCAN_TARGET_FRAME=livox_frame
+~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml
 ```
 
-## Go2 运动桥接
-
-Nav2 输出：
+The head-forward DWB model treats Go2 more like a pseudo-differential robot:
 
 ```text
-/cmd_vel
+min_vel_x: 0.0
+min_vel_y: 0.0
+max_vel_x: 0.30
+max_vel_y: 0.0
+max_vel_theta: 0.70
+vy_samples: 1
 ```
 
-Go2 实际控制使用 Unitree high-level SportClient：
+This avoids Nav2 planning sideways motion once it is working in `base_link`.
+
+### Go2 Footprint And Wall Clearance
+
+We found that Go2 would try to pass through spaces that the lidar/2D map considered open but the body/legs could hit. The fix is to give Nav2 a larger robot footprint and stronger inflation.
+
+Current local/global costmap footprint:
+
+```yaml
+footprint: "[[0.45, 0.30], [0.45, -0.30], [-0.45, -0.30], [-0.45, 0.30]]"
+footprint_padding: 0.08
+```
+
+Meaning:
 
 ```text
-SportClient.Move(vx, vy, wz)
+nominal planning body length: 0.90 m
+nominal planning body width:  0.60 m
+extra safety padding:         0.08 m
 ```
 
-桥接脚本：
+Current inflation:
+
+```yaml
+cost_scaling_factor: 3.0
+inflation_radius: 0.75
+```
+
+Current DWB obstacle critic:
+
+```yaml
+BaseObstacle.scale: 0.08
+```
+
+This is deliberately conservative. Go2 static width is smaller than this, but a walking quadruped has leg swing, body sway, and recovery motion. It should not plan like a perfectly rigid small circle.
+
+If it becomes too conservative and refuses a passage that is physically safe, tune down in this order:
+
+```yaml
+footprint_padding: 0.05
+inflation_radius: 0.60
+cost_scaling_factor: 4.0
+BaseObstacle.scale: 0.05
+```
+
+Do not shrink the footprint first unless the physical clearance has been measured.
+
+## Go2 Command Bridge
+
+Bridge script:
 
 ```text
 ~/work/nyush_rm_sentry/scripts/go2_cmd_bridge.py
 ```
 
-当前速度上限：
+Input:
+
+```text
+/cmd_vel
+```
+
+Output:
+
+```text
+Unitree SportClient.Move(vx, vy, wz)
+```
+
+Current head-forward motion parameters:
 
 ```text
 GO2_MAX_VX=0.30
-GO2_MAX_VY=0.30
+GO2_MAX_VY=0.00
 GO2_MAX_WZ=0.70
+GO2_SWAP_XY=false
+GO2_X_SIGN=1.0
+GO2_Y_SIGN=1.0
+GO2_WZ_SIGN=1.0
 ```
 
-我们用键盘测试过，`vx=0.30, vy=0.30, wz=0.70` 对当前 Go2 响应比较合理。更小的速度会出现需要长按很久、姿态轻微变化但不明显移动的问题。
+Earlier, when Nav2 ran in `livox_frame`, the Go2 command bridge had to rotate Nav2 velocity commands:
 
-Go2 和轮式底盘不太一样。轮式底盘收到很小的 `/cmd_vel` 往往也会缓慢动起来，但 Go2 的 high-level 步态控制存在明显的实际起步死区：速度太小的时候可能只是身体晃动、原地犹豫，不会立刻迈步。因此当前 bridge 支持最小有效命令：
+```text
+GO2_SWAP_XY=true
+GO2_X_SIGN=1.0
+GO2_Y_SIGN=-1.0
+```
+
+That old mapping meant:
+
+```text
+vx_go2 =  vy_nav
+vy_go2 = -vx_nav
+wz_go2 =  wz_nav
+```
+
+In the current `base_link/head-forward` model, this swap is no longer needed.
+
+### Go2 Deadband And Minimum Command
+
+Go2 high-level `Move()` behaves differently from a wheeled chassis. Very small speed commands often make the body sway or prepare gait without actually stepping. We therefore added command floors:
 
 ```text
 GO2_DEADBAND_V=0.02
@@ -445,116 +739,95 @@ GO2_MIN_CMD_V=0.10
 GO2_MIN_CMD_W=0.20
 ```
 
-含义是：
+Meaning:
 
 ```text
-小于 deadband 的命令直接视为 0
-大于 deadband 但小于 min_cmd 的非零命令，会抬到 min_cmd
+abs(command) < deadband:
+  send 0
+
+deadband <= abs(command) < min_cmd:
+  lift to min_cmd with same sign
 ```
 
-这样可以减少 Nav2 输出很小速度时 Go2 只晃不走的问题。与此同时，`go2_nav2_params_light.yaml` 里也把 DWB 的 `min_speed_xy/min_speed_theta` 设成非零，并降低了 `RotateToGoal` 权重，避免每次开始走之前先原地转很久。
+This reduces the "hesitate in place" behavior where Nav2 keeps outputting tiny commands that do not make Go2 step.
 
-如果键盘脚本方向正确，但 Nav2 自动导航方向像整体偏了 90 度，可以先不改定位和地图，直接在 Go2 command bridge 里测试二维速度映射：
+If movement is too abrupt near the goal:
 
 ```text
-中性映射:
-  vx_go2 = vx_nav
-  vy_go2 = vy_nav
-
-+90 度逆时针映射:
-  vx_go2 = -vy_nav
-  vy_go2 =  vx_nav
-  GO2_SWAP_XY=true
-  GO2_X_SIGN=-1.0
-  GO2_Y_SIGN=1.0
-
--90 度顺时针映射:
-  vx_go2 =  vy_nav
-  vy_go2 = -vx_nav
-  GO2_SWAP_XY=true
-  GO2_X_SIGN=1.0
-  GO2_Y_SIGN=-1.0
+GO2_MIN_CMD_V=0.08
+GO2_MIN_CMD_W=0.15
 ```
 
-如果键盘 `q/e` 的旋转方向已经正确，先保持：
+If Go2 still only sways and does not step:
 
 ```text
-GO2_WZ_SIGN=1.0
+GO2_MIN_CMD_V=0.12
+GO2_MIN_CMD_W=0.25
 ```
 
-遥控器优先很重要：
+### Remote Priority
+
+Keep this on:
 
 ```text
 GO2_REMOTE_PRIORITY=true
 ```
 
-含义是遥控器有输入时，命令桥接会暂停或让出控制，避免 Nav2 和遥控器抢控制。
+If the remote controller input exceeds the configured deadband, the bridge releases Nav2 control so the remote can take over.
 
-## 键盘控制调试
+## Keyboard Debug
 
-键盘调试用于验证：
+This tests only:
 
 ```text
-/cmd_vel -> go2_cmd_bridge.py -> SportClient.Move
+/cmd_vel -> go2_cmd_bridge.py -> SportClient.Move()
 ```
 
-不需要 Nav2。
-
-命令：
+It does not require Nav2.
 
 ```bash
 cd ~/work/nyush_rm_sentry
 ./scripts/stop_mid360_fastlio_nav2.sh
 ./scripts/start_go2_cmd_bridge_debug.sh
 
-source /opt/ros/foxy/setup.bash
-source ~/nav_ws/install/setup.bash
-source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
-export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-unset CYCLONEDDS_URI
+source ~/work/go2_nav/env.sh
 
 ./scripts/keyboard_cmd_vel_debug.py --vx 0.30 --vy 0.30 --wz 0.70 --latch
 ```
 
-按键：
+Keys:
 
 ```text
-w/s = 前进/后退
-a/d = 左移/右移
-q/e = 正/负角速度
-space 或 x = 停止
+w/s      forward/back
+a/d      left/right
+q/e      positive/negative angular velocity
+space/x  stop
 ```
 
-另开一个终端看桥接日志：
+Watch bridge output:
 
 ```bash
 tail -f /tmp/go2_cmd_bridge_debug.log
 ```
 
-如果键盘能动，说明 Go2 command bridge 是通的。如果 Nav2 不能动，就应该查 Nav2 controller、路径、costmap、goal 和 `/cmd_vel`，而不是先怀疑 Unitree SDK。
+If keyboard works but Nav2 does not, the Unitree command bridge is probably not the problem. Check Nav2 planner/controller/costmap/goal.
 
-## VNC 和 RViz
+## VNC, RViz, And Screenshots
 
-VNC 连接：
+VNC:
 
 ```text
 10.209.69.61:5901
+DISPLAY=:1
 ```
 
-检查 VNC 服务：
-
-```bash
-systemctl --user status rviz-vnc.service --no-pager
-tail -n 80 /tmp/rviz-vnc/x11vnc.log 2>/dev/null || true
-```
-
-RViz 配置：
+Current RViz config:
 
 ```text
-~/work/nyush_rm_sentry/config/go2_nav2_light.rviz
+~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz
 ```
 
-为了减轻 Jetson 负载，RViz 里不要长期打开太多显示项。优先保留：
+Useful RViz display items:
 
 ```text
 Map
@@ -562,29 +835,58 @@ LaserScan
 Odom
 GlobalPlan
 TF
+LocalCostmap / GlobalCostmap only when actively debugging
 ```
 
-尽量少开：
+Do not leave heavy point cloud displays enabled for long periods on the Jetson.
+
+We saw a paste-image failure:
 
 ```text
-大点云显示
-高频 costmap 显示
-多个历史轨迹显示
+clipboard unavailable
+Unknown error while interacting with the clipboard: X11 server connection timed out
 ```
 
-Foxy + Jetson 在高负载时容易出现 CLI 卡顿、RViz 卡顿、`bad_alloc` 或 MessageFilter drop，看起来像 TF 坏了，但实际可能只是负载过高或重复节点导致。
+The X server itself was verified good:
 
-## 诊断命令
+```text
+Xvfb :1 running
+x11vnc :5901 running
+xdpyinfo -display :1 works
+RViz running on :1
+```
 
-加载环境：
+The practical fix was to make `env.sh` set:
+
+```text
+DISPLAY=:1
+```
+
+If a terminal still has no display:
 
 ```bash
-source /opt/ros/foxy/setup.bash
-source ~/nav_ws/install/setup.bash
-source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
+source ~/work/go2_nav/env.sh
+echo $DISPLAY
+xdpyinfo -display :1 | head
 ```
 
-Topic 频率：
+Clipboard paste may still depend on the client UI. For reliable sharing, save a screenshot file and upload it rather than relying on clipboard paste.
+
+## Diagnostics
+
+Load environment:
+
+```bash
+source ~/work/go2_nav/env.sh
+```
+
+Topic list:
+
+```bash
+ros2 topic list -t | grep -E 'livox|cloud|scan|odom|Odometry|tf|map|cmd_vel'
+```
+
+Key topic frequencies:
 
 ```bash
 timeout 5 ros2 topic hz /livox/lidar
@@ -592,17 +894,45 @@ timeout 5 ros2 topic hz /livox/imu
 timeout 5 ros2 topic hz /cloud_registered_body
 timeout 5 ros2 topic hz /scan
 timeout 5 ros2 topic hz /Odometry
+timeout 5 ros2 topic hz /odom_base_link
 timeout 5 ros2 topic hz /cmd_vel
 ```
 
-TF：
+ROS 2 CLI on this machine can still print:
 
-```bash
-ros2 run tf2_ros tf2_echo odom livox_frame
-ros2 run tf2_ros tf2_echo map livox_frame
+```text
+bad_alloc caught: std::bad_alloc
 ```
 
-Nav2 lifecycle：
+Do not immediately conclude that the robot is out of memory or that a node died. We have seen this from Foxy CLI under load. Cross-check with RViz, logs, and process list.
+
+TF checks:
+
+```bash
+ros2 run tf2_ros tf2_echo map odom
+ros2 run tf2_ros tf2_echo odom livox_frame
+ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo livox_frame base_link
+ros2 run tf2_ros tf2_echo map base_link
+```
+
+Expected static relation:
+
+```text
+odom -> base_link yaw ~= +90 deg relative to odom -> livox_frame
+livox_frame -> base_link yaw ~= +90 deg
+```
+
+After the ICP search-window fix, one observed good-ish run had:
+
+```text
+map->odom:      xyz=(2.989, 2.291, -0.350) yaw=-104.9 deg
+odom->base_link xyz=(-0.029, -0.027, -0.027) yaw=90.0 deg
+map->base_link xyz=(2.969, 2.321, -0.381) yaw=-14.9 deg
+ICP score: 0.032467
+```
+
+Lifecycle:
 
 ```bash
 ros2 lifecycle get /map_server
@@ -611,26 +941,189 @@ ros2 lifecycle get /planner_server
 ros2 lifecycle get /bt_navigator
 ```
 
-进程检查：
+Processes:
 
 ```bash
 pgrep -af 'livox_ros_driver2|fastlio_mapping|pointcloud_to_laserscan|icp_registration|nav2|rviz2|go2_cmd_bridge'
 ```
 
-日志：
+Logs:
 
 ```bash
 tail -n 120 /tmp/mid360_fastlio_nav2/livox_driver.log 2>/dev/null || true
 tail -n 120 /tmp/mid360_fastlio_nav2/fastlio_mapping.log 2>/dev/null || true
 tail -n 120 /tmp/mid360_fastlio_nav2/icp_registration.log 2>/dev/null || true
+tail -n 120 /tmp/mid360_fastlio_nav2/odom_base_link.log 2>/dev/null || true
+tail -n 120 /tmp/mid360_fastlio_nav2/pointcloud_to_laserscan.log 2>/dev/null || true
 tail -n 120 /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log 2>/dev/null || true
 ```
 
-## 我们试过的路线
+## Common Failure Modes
 
-### Go2 内置雷达官方 topic
+### Two ICP Nodes
 
-我们检查和尝试过：
+Symptom:
+
+```text
+scan/map jitters
+map alignment appears to jump
+RViz looks like localization is unstable
+```
+
+Cause:
+
+```text
+two localization nodes publish map -> odom
+```
+
+Fix:
+
+```bash
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+pgrep -af icp_registration
+```
+
+There should be no old `icp_registration_node` before restarting.
+
+### ICP Score Is High But Node "Succeeds"
+
+Symptom:
+
+```text
+score around 0.15 to 0.18
+scan and map visibly rotated or offset
+Nav2 still starts because threshold is 0.35
+```
+
+Fix status:
+
+```text
+The search-window C++ bug has been fixed and rebuilt.
+If this returns, first confirm the log contains:
+  search window: xy_steps=3 ... yaw_steps=12 ...
+```
+
+If the log does not show `search window`, the running binary is old. Rebuild:
+
+```bash
+source ~/work/go2_nav/env.sh
+cd ~/work/nyush_rm_sentry/rm_navigation_ws
+colcon build --symlink-install --packages-select icp_registration
+```
+
+Then restart the stack.
+
+### RViz Odom Arrow Did Not Change
+
+Symptom:
+
+```text
+You switched Nav2 to base_link but the red Odom arrow looks unchanged.
+```
+
+Cause:
+
+```text
+RViz Odometry display still subscribes to /Odometry.
+/Odometry is FAST-LIO's livox_frame odom.
+```
+
+Fix:
+
+```text
+Use go2_nav2_base_link.rviz.
+Odom display topic must be /odom_base_link.
+```
+
+### Nav2 Thinks It Can Pass But Go2 Hits Wall
+
+Cause:
+
+```text
+Robot footprint / inflation too small.
+Legged robot needs more clearance than the static body width.
+```
+
+Current fix:
+
+```text
+head_forward footprint = 0.90 m x 0.60 m
+padding = 0.08 m
+inflation_radius = 0.75 m
+BaseObstacle.scale = 0.08
+```
+
+If still too close to walls, increase:
+
+```text
+footprint_padding
+inflation_radius
+BaseObstacle.scale
+```
+
+If it refuses real openings, reduce only after measuring physical clearance.
+
+### Go2 Hesitates Before Walking
+
+Cause:
+
+```text
+Nav2 emits small nonzero velocities.
+Go2 high-level gait may not step below a practical speed floor.
+```
+
+Current fix:
+
+```text
+GO2_DEADBAND_V=0.02
+GO2_DEADBAND_W=0.04
+GO2_MIN_CMD_V=0.10
+GO2_MIN_CMD_W=0.20
+```
+
+### Direction Is Rotated 90 Degrees
+
+Old temporary solution:
+
+```text
+Run Nav2 in livox_frame and rotate vx/vy in bridge.
+```
+
+Current solution:
+
+```text
+Run Nav2 in base_link.
+Use /odom_base_link.
+Use LIDAR_TO_BASE_YAW_DEG=90.
+Do not swap vx/vy in Go2 bridge.
+```
+
+### ROS 2 CLI `bad_alloc`
+
+We saw this repeatedly:
+
+```text
+bad_alloc caught: std::bad_alloc
+```
+
+It appeared in `ros2 topic hz`, `ros2 topic echo`, and sometimes logs from launch processes. It does not always mean the process is dead. Use these checks together:
+
+```text
+RViz visual refresh
+process list
+node info
+log timestamps
+custom Python subscriber if CLI fails
+```
+
+Also reduce RViz load where possible.
+
+## Routes We Tried And Parked
+
+### Go2 Built-In Lidar Official Topics
+
+Observed topics included:
 
 ```text
 /utlidar/cloud
@@ -642,199 +1135,84 @@ tail -n 120 /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log 2>/dev/null || true
 /lio_sam_ros2/mapping/*
 ```
 
-这些 topic 确实存在，但完整全局地图和保存流程不够稳定。单帧点云或简单累计点云转 PGM 后，要么太稀疏，要么把可走区域也投成障碍。
+They are useful references, but the global map/save flow was not stable enough for this deployment. The current mainline uses external MID360.
 
-结论：
+### Point-LIO With Go2 Built-In Lidar
 
-```text
-Go2 内置雷达官方链路保留为参考，不作为当前主线。
-```
+We tried feeding Go2 built-in lidar/imu topics to Point-LIO. It could look plausible while static, but moving caused drift or failure. The likely reason is that the processed Go2 lidar/imu topics do not match Point-LIO's assumptions about raw Unitree L1 data.
 
-### Point-LIO + Go2 内置雷达
-
-我们尝试过用 Go2 内置：
-
-```text
-/utlidar/cloud
-/utlidar/imu
-```
-
-接 Point-LIO，也对比过 `unitreerobotics/point_lio_unilidar`。
-
-现象：
-
-```text
-静止时短时间看起来可以
-一移动或有加速度就容易飞
-调整 acc_norm 可以缓解表象，但不是根治
-```
-
-判断：
-
-```text
-Go2 内置官方处理后的 lidar/imu topic 和 Point-LIO 对原始 Unitree L1 数据的假设不完全一致。
-```
+This is parked.
 
 ### go2_ros2_sdk + slam_toolbox
 
-我们复现过类似 `go2_ros2_sdk` 的路线：
+We also tested a route closer to:
 
 ```text
-Go2 SDK 点云
+Go2 SDK point cloud
 -> pointcloud_to_laserscan
 -> slam_toolbox
 -> Nav2
 ```
 
-它对理解 Go2 command bridge 和 high-level SDK 有帮助，但建图质量没有超过外接 MID360 + FAST-LIO。
+It helped understand the Go2 SDK and motion bridge, but the map quality did not beat external MID360 + FAST-LIO.
 
-结论：
-
-```text
-作为参考路线保留，不作为当前主线。
-```
+This is parked.
 
 ### RealSense D435i
 
-我们也测试过 RealSense D435i，希望未来可能用于 FAST-LIVO 或视觉建图。
-
-当前结论：
+RealSense was investigated for possible future FAST-LIVO/visual mapping work. Current status:
 
 ```text
-RealSense 暂时不进入导航主线。
+RSUSB clean stack can produce data under some profiles.
+Native backend on Jetson can fail VIDIOC_S_FMT.
+Depth/color/IMU stability depends heavily on firmware, backend, USB topology, and profile.
 ```
 
-已经观察到：
+RealSense is not part of the current navigation mainline.
 
-```text
-RSUSB clean stack 某些 profile 可以出数据
-Native backend 在 Jetson 上可能 VIDIOC_S_FMT 失败
-depth/color/IMU 稳定性和 firmware、backend、USB 拓扑强相关
-```
+## Git And Backup
 
-在 RealSense 能稳定连续运行 30 到 60 分钟之前，不把它接入主导航流程。
-
-## 已知问题和处理
-
-### scan 抖动或 map 对齐跳变
-
-最可能原因：
-
-```text
-存在两个 ICP 节点同时发布 map -> odom
-```
-
-处理：
-
-```bash
-cd ~/work/nyush_rm_sentry
-./scripts/stop_mid360_fastlio_nav2.sh
-pgrep -af icp_registration
-```
-
-期望停止后没有 `icp_registration_node`。
-
-### 遥控器被 Nav2 抢控制
-
-确保启动时使用：
-
-```text
-GO2_REMOTE_PRIORITY=true
-```
-
-或者只停止桥接：
-
-```bash
-pkill -TERM -f '[/]go2_cmd_bridge.py'
-```
-
-### RViz 显示 no TF data
-
-检查：
-
-```bash
-ros2 run tf2_ros tf2_echo odom livox_frame
-ros2 run tf2_ros tf2_echo map livox_frame
-pgrep -af icp_registration
-```
-
-如果 `map -> livox_frame` 不存在，通常是 ICP 没发布 `map -> odom`，或者多个定位节点冲突。
-
-### Nav2 有路径但机器人不动
-
-先看 `/cmd_vel`：
-
-```bash
-timeout 5 ros2 topic hz /cmd_vel
-ros2 topic echo /cmd_vel
-```
-
-再看桥接：
-
-```bash
-tail -f /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log
-```
-
-如果 `/cmd_vel` 有，但没有 `Move(...)` 日志，说明桥接没有运行或订阅 topic 不对。
-
-如果键盘可以控制 Go2，但 Nav2 goal 不动，说明 Unitree 运动桥接是通的，问题更可能在 Nav2 controller、路径、costmap 或 goal。
-
-### ROS2 CLI 出现 bad_alloc
-
-我们在 Foxy + Jetson 高负载下遇到过几次。它不一定是真正内存耗尽，也可能是 ROS2/Foxy 在高负载下的表现。
-
-处理原则：
-
-```text
-减少 RViz 显示项
-不要重复启动重节点
-先关运动桥接，只验证定位
-确认没有重复 ICP
-```
-
-## Git 备份
-
-远端仓库：
+Remote:
 
 ```text
 git@github.com:AlanZhu2006/go2_nav.git
 ```
 
-本地仓库根目录：
+Repository root:
 
 ```text
 ~/work
 ```
 
-检查同步状态：
+Check:
 
 ```bash
 cd ~/work
 git status --short --branch
-git log --oneline --decorate -3
-git ls-remote origin refs/heads/main
+git log --oneline --decorate -5
 ```
 
-提交和推送：
+This repository intentionally ignores many files by default, so key scripts/docs sometimes need force-add:
 
 ```bash
 cd ~/work
-git add -f go2_nav/README.md go2_nav/command.txt
-git commit -m "Update Go2 navigation docs"
+git add -f go2_nav/README.md go2_nav/command.txt go2_nav/env.sh
+git add -f nyush_rm_sentry/scripts/republish_odom_base_link.py
+git add -f nyush_rm_sentry/config/go2_nav2_base_link.rviz
+git add -f nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml
+git add -f nyush_rm_sentry/rm_navigation_ws/src/rm_localization/icp_registration/src/icp_registration.cpp
+git add -f nyush_rm_sentry/rm_navigation_ws/src/rm_localization/icp_registration/include/icp_registration/icp_registration.hpp
+git commit -m "Update Go2 MID360 Nav2 deployment notes"
 git push origin main
 ```
 
-当前备份采用 `.gitignore` 默认忽略所有文件，只强制加入关键文件。因此更新文档或新脚本时，经常需要：
+## Current Next Steps
 
-```bash
-git add -f <file>
-```
-
-## 当前下一步
-
-1. 继续把 MID360 + FAST-LIO + ICP + Nav2 作为主线。
-2. 每次改地图、参数或 TF 后，先用 `START_GO2_CMD_BRIDGE=false` 验证定位和 RViz。
-3. 确认只存在一个 ICP 进程后，再相信 scan-map 对齐结果。
-4. 确认 map、scan、odom、global plan 稳定后，再开启 `START_GO2_CMD_BRIDGE=true`。
-5. 继续微调 Nav2 controller、footprint 和 costmap，让 Go2 行走更顺。
-6. RealSense、Point-LIO、Go2 内置雷达官方建图路线暂时作为研究分支，不阻塞当前导航闭环。
+1. Use the head-forward `base_link` stack as the mainline.
+2. Start with `START_GO2_CMD_BRIDGE=false` after any localization/map/TF parameter change.
+3. Check ICP log for `search window` and score before trusting RViz.
+4. Treat score around `0.15+` as suspicious even if below `ICP_THRESH=0.35`.
+5. Verify RViz `Odom` topic is `/odom_base_link`.
+6. Verify scan/map alignment and global plan before enabling Go2 motion.
+7. Test conservative footprint/inflation near walls.
+8. Only after alignment and clearance are correct, restart with `START_GO2_CMD_BRIDGE=true`.

@@ -98,10 +98,7 @@ pgrep -af "[/]go2_cmd_bridge.py" || true
 echo
 echo "Keyboard test:"
 echo "  cd ~/work/nyush_rm_sentry"
-echo "  source /opt/ros/foxy/setup.bash"
-echo "  source ~/nav_ws/install/setup.bash"
-echo "  source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash"
-echo "  export RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+echo "  source ~/work/go2_nav/env.sh"
 echo "  ./scripts/keyboard_cmd_vel_debug.py --vx 0.30 --vy 0.16 --wz 0.55 --latch"
 echo
 echo "Watch bridge output:"

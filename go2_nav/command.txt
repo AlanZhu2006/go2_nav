@@ -86,9 +86,11 @@ PCD2PGM_POINT_COUNT=5 \
 #   ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.pgm
 #   ~/work/go2_nav/maps/mid360_fastlio_latest/nav2_map/map.yaml
 
-# Optional but recommended: create a filtered PCD for ICP localization.
-# Nav2 reads map.yaml, but ICP reads a PCD directly. If the original PCD contains
-# ceiling points or high clutter, use this filtered PCD for ICP_PCD_FILE.
+# Optional experiment: create a filtered PCD for ICP localization.
+# Nav2 reads map.yaml, but ICP reads a PCD directly.
+# NOTE: 2026-06-02 ICP sweep showed that this filtered PCD failed at the
+# current site while the raw fastlio_map.pcd succeeded with score 0.003010.
+# Keep this as an experiment, not the default ICP_PCD_FILE.
 cd ~/work/nyush_rm_sentry
 ./scripts/filter_pcd_for_icp.py \
   --input ~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
@@ -113,7 +115,7 @@ START_RVIZ=true \
 START_GO2_CMD_BRIDGE=false \
 NAV_BASE_FRAME=livox_frame \
 NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -132,7 +134,7 @@ SCAN_RANGE_MIN=0.30 \
 SCAN_RANGE_MAX=8.0 \
 SCAN_USE_INF=false \
 SCAN_MIN_HEIGHT=0.20 \
-SCAN_MAX_HEIGHT=1.80 \
+SCAN_MAX_HEIGHT=1.50 \
 SCAN_TRANSFORM_TOLERANCE=0.50 \
 ./scripts/start_mid360_start_robot_style.sh
 
@@ -167,13 +169,13 @@ GO2_DEADBAND_V=0.02 \
 GO2_DEADBAND_W=0.04 \
 GO2_MIN_CMD_V=0.10 \
 GO2_MIN_CMD_W=0.20 \
-GO2_SWAP_XY=false \
+GO2_SWAP_XY=true \
 GO2_X_SIGN=1.0 \
-GO2_Y_SIGN=1.0 \
+GO2_Y_SIGN=-1.0 \
 GO2_WZ_SIGN=1.0 \
 NAV_BASE_FRAME=livox_frame \
 NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
 ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
 ICP_LASER_FRAME_ID=livox_frame \
 ICP_RANGE_ODOM_FRAME_ID=odom \
@@ -192,23 +194,24 @@ SCAN_RANGE_MIN=0.30 \
 SCAN_RANGE_MAX=8.0 \
 SCAN_USE_INF=false \
 SCAN_MIN_HEIGHT=0.20 \
-SCAN_MAX_HEIGHT=1.80 \
+SCAN_MAX_HEIGHT=1.50 \
 SCAN_TRANSFORM_TOLERANCE=0.50 \
 ./scripts/start_mid360_start_robot_style.sh
 
-# If Nav2 direction is rotated 90 deg, retry the full command above with this
-# mapping block replacing the neutral one:
-#
-# +90 deg CCW:
-# GO2_SWAP_XY=true \
-# GO2_X_SIGN=-1.0 \
-# GO2_Y_SIGN=1.0 \
-# GO2_WZ_SIGN=1.0 \
+# Current motion mapping rotates Nav2 cmd_vel into the Go2 command frame:
 #
 # -90 deg CW:
 # GO2_SWAP_XY=true \
 # GO2_X_SIGN=1.0 \
 # GO2_Y_SIGN=-1.0 \
+# GO2_WZ_SIGN=1.0 \
+#
+# If it turns out reversed, retry the full command above with this block:
+#
+# +90 deg CCW:
+# GO2_SWAP_XY=true \
+# GO2_X_SIGN=-1.0 \
+# GO2_Y_SIGN=1.0 \
 # GO2_WZ_SIGN=1.0 \
 
 # Watch actual commands sent to SportClient.Move().
@@ -216,6 +219,113 @@ tail -f /tmp/mid360_fastlio_nav2/go2_cmd_bridge.log
 
 # Emergency stop motion bridge only.
 pkill -TERM -f '[/]go2_cmd_bridge.py'
+
+
+###############################################################################
+# 5.1. Head-forward Nav2 test: use robot base_link instead of lidar frame
+###############################################################################
+
+# This is the more correct robot model:
+#   ICP still aligns MID360 cloud to the raw FAST-LIO PCD.
+#   Nav2 uses base_link as the robot body frame.
+#   pointcloud_to_laserscan transforms the cloud into base_link.
+#   DWB is configured like a pseudo-differential robot: no sideways vy, no reverse.
+#
+# First run without Go2 motion and verify RViz alignment.
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+LOCALIZATION_MODE=icp \
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=false \
+NAV2_PARAMS_FILE=~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml \
+RVIZ_CONFIG=~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz \
+NAV_BASE_FRAME=base_link \
+FASTLIO_ODOM_TOPIC=/Odometry \
+NAV_ODOM_TOPIC=/odom_base_link \
+LIDAR_TO_BASE_YAW_DEG=90 \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
+ICP_LASER_FRAME_ID=livox_frame \
+ICP_RANGE_ODOM_FRAME_ID=odom \
+ICP_ODOM_FRAME_ID=odom \
+ICP_INITIAL_POSE_X=0.0 \
+ICP_INITIAL_POSE_Y=0.0 \
+ICP_INITIAL_POSE_YAW=0.0 \
+ICP_THRESH=0.35 \
+ICP_XY_OFFSET=0.75 \
+ICP_XY_SEARCH_STEPS=3 \
+ICP_YAW_OFFSET=180.0 \
+ICP_YAW_RESOLUTION=15.0 \
+SCAN_TARGET_FRAME=base_link \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.50 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
+
+# If RViz alignment is correct, enable motion.
+# Because Nav2 cmd_vel is now in base_link, do not swap vx/vy in the bridge.
+
+cd ~/work/nyush_rm_sentry
+./scripts/stop_mid360_fastlio_nav2.sh
+
+LOCALIZATION_MODE=icp \
+START_NAVIGATION=true \
+START_RVIZ=true \
+START_GO2_CMD_BRIDGE=true \
+NAV2_BT_XML=/opt/ros/foxy/share/nav2_bt_navigator/behavior_trees/navigate_w_replanning_time.xml \
+NAV2_PARAMS_FILE=~/work/nyush_rm_sentry/config/go2_nav2_params_head_forward.yaml \
+RVIZ_CONFIG=~/work/nyush_rm_sentry/config/go2_nav2_base_link.rviz \
+GO2_REMOTE_PRIORITY=true \
+GO2_SEND_ZERO_WHEN_IDLE=false \
+GO2_LOG_COMMANDS=true \
+GO2_LOG_INTERVAL_SEC=0.3 \
+GO2_MAX_VX=0.30 \
+GO2_MAX_VY=0.00 \
+GO2_MAX_WZ=0.45 \
+GO2_DEADBAND_V=0.02 \
+GO2_DEADBAND_W=0.04 \
+GO2_MIN_CMD_V=0.20 \
+GO2_MIN_CMD_W=0.30 \
+GO2_SWAP_XY=false \
+GO2_X_SIGN=1.0 \
+GO2_Y_SIGN=1.0 \
+GO2_WZ_SIGN=1.0 \
+NAV_BASE_FRAME=base_link \
+FASTLIO_ODOM_TOPIC=/Odometry \
+NAV_ODOM_TOPIC=/odom_base_link \
+LIDAR_TO_BASE_X=-0.13 \
+LIDAR_TO_BASE_Y=0.0 \
+LIDAR_TO_BASE_Z=0.0 \
+LIDAR_TO_BASE_YAW_DEG=90 \
+ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map.pcd \
+ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
+ICP_LASER_FRAME_ID=livox_frame \
+ICP_RANGE_ODOM_FRAME_ID=odom \
+ICP_ODOM_FRAME_ID=odom \
+ICP_INITIAL_POSE_X=0.0 \
+ICP_INITIAL_POSE_Y=0.0 \
+ICP_INITIAL_POSE_YAW=0.0 \
+ICP_THRESH=0.35 \
+ICP_XY_OFFSET=0.75 \
+ICP_XY_SEARCH_STEPS=3 \
+ICP_YAW_OFFSET=180.0 \
+ICP_YAW_RESOLUTION=15.0 \
+SCAN_TARGET_FRAME=base_link \
+SCAN_ANGLE_INCREMENT=0.0174533 \
+SCAN_RANGE_MIN=0.30 \
+SCAN_RANGE_MAX=8.0 \
+SCAN_USE_INF=false \
+SCAN_MIN_HEIGHT=0.20 \
+SCAN_MAX_HEIGHT=1.50 \
+SCAN_TRANSFORM_TOLERANCE=0.50 \
+./scripts/start_mid360_start_robot_style.sh
 
 
 ###############################################################################
@@ -260,8 +370,7 @@ tail -f /tmp/go2_cmd_bridge_debug.log
 ###############################################################################
 
 source /opt/ros/foxy/setup.bash
-source ~/nav_ws/install/setup.bash
-source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
+source ~/work/go2_nav/env.sh
 
 # Topic rates.
 timeout 5 ros2 topic hz /livox/lidar
@@ -269,10 +378,18 @@ timeout 5 ros2 topic hz /livox/imu
 timeout 5 ros2 topic hz /cloud_registered_body
 timeout 5 ros2 topic hz /scan
 timeout 5 ros2 topic hz /Odometry
+timeout 5 ros2 topic hz /odom_base_link
 timeout 5 ros2 topic hz /cmd_vel
 
 # TF checks.
 ros2 run tf2_ros tf2_echo odom livox_frame
+ros2 run tf2_ros tf2_echo odom base_link
+ros2 run tf2_ros tf2_echo livox_frame base_link
+
+# RViz red Odom arrow check:
+#   Old lidar/body odom: /Odometry
+#   Head-forward body odom: /odom_base_link
+ros2 topic echo --once /odom_base_link
 ros2 run tf2_ros tf2_echo map livox_frame
 
 # Lifecycle checks.
@@ -310,55 +427,19 @@ pkill -TERM -f '[/]rviz2' 2>/dev/null || true
 
 cd ~/work
 git status --short --branch
-git add -A
+git add -f go2_nav/README.md go2_nav/command.txt
+git add -f nyush_rm_sentry/scripts/sweep_mid360_icp_scores.sh
 git commit -m "Update Go2 navigation deployment notes"
 git push origin main
 
+source /opt/ros/foxy/setup.bash
+source ~/nav_ws/install/setup.bash
+source ~/work/nyush_rm_sentry/rm_navigation_ws/install/setup.bash
 
-cd ~/work/nyush_rm_sentry
-./scripts/stop_mid360_fastlio_nav2.sh
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+unset CYCLONEDDS_URI
+unset CYCLONEDDS_HOME
 
-LOCALIZATION_MODE=icp \
-START_NAVIGATION=true \
-START_RVIZ=true \
-START_GO2_CMD_BRIDGE=true \
-NAV2_BT_XML=/opt/ros/foxy/share/nav2_bt_navigator/behavior_trees/navigate_w_replanning_time.xml \
-GO2_REMOTE_PRIORITY=true \
-GO2_SEND_ZERO_WHEN_IDLE=false \
-GO2_LOG_COMMANDS=true \
-GO2_LOG_INTERVAL_SEC=0.3 \
-GO2_MAX_VX=0.30 \
-GO2_MAX_VY=0.30 \
-GO2_MAX_WZ=0.70 \
-GO2_DEADBAND_V=0.02 \
-GO2_DEADBAND_W=0.04 \
-GO2_MIN_CMD_V=0.10 \
-GO2_MIN_CMD_W=0.20 \
-GO2_SWAP_XY=true \
-GO2_X_SIGN=1.0 \
-GO2_Y_SIGN=-1.0 \
-GO2_WZ_SIGN=1.0 \
-NAV_BASE_FRAME=livox_frame \
-NAV_ODOM_TOPIC=/Odometry \
-ICP_PCD_FILE=~/work/go2_nav/maps/mid360_fastlio_latest/fastlio_map_icp_zm020_150.pcd \
-ICP_POINTCLOUD_TOPIC=/cloud_registered_body \
-ICP_LASER_FRAME_ID=livox_frame \
-ICP_RANGE_ODOM_FRAME_ID=odom \
-ICP_ODOM_FRAME_ID=odom \
-ICP_INITIAL_POSE_X=0.0 \
-ICP_INITIAL_POSE_Y=0.0 \
-ICP_INITIAL_POSE_YAW=0.0 \
-ICP_THRESH=0.35 \
-ICP_XY_OFFSET=0.75 \
-ICP_XY_SEARCH_STEPS=3 \
-ICP_YAW_OFFSET=180.0 \
-ICP_YAW_RESOLUTION=15.0 \
-SCAN_TARGET_FRAME=livox_frame \
-SCAN_ANGLE_INCREMENT=0.0174533 \
-SCAN_RANGE_MIN=0.30 \
-SCAN_RANGE_MAX=8.0 \
-SCAN_USE_INF=false \
-SCAN_MIN_HEIGHT=0.20 \
-SCAN_MAX_HEIGHT=1.50 \
-SCAN_TRANSFORM_TOLERANCE=0.50 \
-./scripts/start_mid360_start_robot_style.sh
+ros2 daemon stop
+ros2 daemon start
+ros2 topic list -t | grep -E 'odom|Odometry'

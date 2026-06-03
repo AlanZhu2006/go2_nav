@@ -25,6 +25,7 @@ LIDAR_IMU_TOPIC="${LIDAR_IMU_TOPIC:-/livox/imu}"
 
 FASTLIO_ODOM_FRAME="${FASTLIO_ODOM_FRAME:-odom}"
 FASTLIO_BODY_FRAME="${FASTLIO_BODY_FRAME:-livox_frame}"
+FASTLIO_ODOM_TOPIC="${FASTLIO_ODOM_TOPIC:-/Odometry}"
 NAV_BASE_FRAME="${NAV_BASE_FRAME:-base_link}"
 NAV_ODOM_TOPIC="${NAV_ODOM_TOPIC:-/Odometry}"
 LIDAR_TO_BASE_X="${LIDAR_TO_BASE_X:-0.0}"
@@ -775,6 +776,23 @@ if ! wait_for_tf "$FASTLIO_ODOM_FRAME" "$NAV_BASE_FRAME" 25; then
     echo "Error: $FASTLIO_ODOM_FRAME -> $NAV_BASE_FRAME TF did not appear." >&2
     echo "Check $LOG_DIR/fastlio_mapping.log and $LOG_DIR/livox_frame_to_base_link.log" >&2
     exit 1
+fi
+
+if [ "$NAV_BASE_FRAME" != "$FASTLIO_BODY_FRAME" ] && [ "$NAV_ODOM_TOPIC" != "$FASTLIO_ODOM_TOPIC" ]; then
+    echo ">>> [5.2/11] Republishing FAST-LIO odometry as $NAV_BASE_FRAME odometry"
+    python3 "$SCRIPT_DIR/republish_odom_base_link.py" --ros-args \
+        -p source_odom_topic:="$FASTLIO_ODOM_TOPIC" \
+        -p output_odom_topic:="$NAV_ODOM_TOPIC" \
+        -p odom_frame_id:="$FASTLIO_ODOM_FRAME" \
+        -p source_base_frame:="$FASTLIO_BODY_FRAME" \
+        -p target_base_frame:="$NAV_BASE_FRAME" \
+        -p stamp_mode:=source \
+        > "$LOG_DIR/odom_base_link.log" 2>&1 &
+    if ! wait_for_topic_message "$NAV_ODOM_TOPIC" nav_msgs/msg/Odometry 15; then
+        echo "Error: $NAV_ODOM_TOPIC has no Odometry messages." >&2
+        tail -80 "$LOG_DIR/odom_base_link.log" >&2 || true
+        exit 1
+    fi
 fi
 
 SCAN_CLOUD_TOPIC="$BODY_CLOUD_TOPIC"
